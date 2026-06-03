@@ -1,10 +1,8 @@
-from fastapi import APIRouter, Depends, File, Form, UploadFile
-
-from app.config import Settings, get_settings
-from app.models import AnalyzeResponse, MediaUrlRequest
-from app.services.reka_vision import RekaVisionService
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 router = APIRouter()
+
+CAPTURE_MODE_VIDEO_CHUNK = "video_chunk"
 
 
 @router.get("/health")
@@ -12,39 +10,28 @@ def health():
     return {"status": "ok"}
 
 
-def get_reka_service(settings: Settings = Depends(get_settings)) -> RekaVisionService:
-    return RekaVisionService(settings)
-
-
-@router.post("/analyze/frame", response_model=AnalyzeResponse)
-async def analyze_frame(
-    frame: UploadFile = File(...),
-    context: str | None = Form(default=None),
-    service: RekaVisionService = Depends(get_reka_service),
+@router.post("/media/chunk")
+async def upload_media_chunk(
+    file: UploadFile = File(...),
+    session_id: str = Form(...),
+    sequence: int = Form(...),
+    captured_at: str = Form(...),
+    capture_mode: str = Form(...),
 ):
-    return await service.analyze_upload(frame, "image", context)
+    if capture_mode != CAPTURE_MODE_VIDEO_CHUNK:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported capture_mode: {capture_mode}",
+        )
 
+    content = await file.read()
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="Empty chunk")
 
-@router.post("/analyze/frame-url", response_model=AnalyzeResponse)
-def analyze_frame_url(
-    request: MediaUrlRequest,
-    service: RekaVisionService = Depends(get_reka_service),
-):
-    return service.analyze_media_url(request.media_url, "image", request.context)
-
-
-@router.post("/analyze/video", response_model=AnalyzeResponse)
-async def analyze_video(
-    video: UploadFile = File(...),
-    context: str | None = Form(default=None),
-    service: RekaVisionService = Depends(get_reka_service),
-):
-    return await service.analyze_upload(video, "video", context)
-
-
-@router.post("/analyze/video-url", response_model=AnalyzeResponse)
-def analyze_video_url(
-    request: MediaUrlRequest,
-    service: RekaVisionService = Depends(get_reka_service),
-):
-    return service.analyze_media_url(request.media_url, "video", request.context)
+    return {
+        "accepted": True,
+        "session_id": session_id,
+        "sequence": sequence,
+        "bytes": len(content),
+        "captured_at": captured_at,
+    }
