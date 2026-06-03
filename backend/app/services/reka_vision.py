@@ -70,6 +70,19 @@ class RekaVisionService:
         media_url = _to_data_url(content_type, contents)
         return self.analyze_media_url(media_url, source_type, context)
 
+    async def analyze_upload_safely(
+        self,
+        upload: UploadFile,
+        source_type: Literal["image", "video"],
+        context: str | None = None,
+    ) -> AnalyzeResponse:
+        try:
+            return await self.analyze_upload(upload, source_type, context)
+        except HTTPException as exc:
+            if exc.status_code < 500:
+                raise
+            return _fallback_analysis(source_type, exc.detail)
+
     def analyze_media_url(
         self,
         media_url: str,
@@ -118,6 +131,19 @@ class RekaVisionService:
             raw_model_text=raw_text,
         )
 
+    def analyze_media_url_safely(
+        self,
+        media_url: str,
+        source_type: Literal["image", "video"],
+        context: str | None = None,
+    ) -> AnalyzeResponse:
+        try:
+            return self.analyze_media_url(media_url, source_type, context)
+        except HTTPException as exc:
+            if exc.status_code < 500:
+                raise
+            return _fallback_analysis(source_type, exc.detail)
+
 
 def _build_user_prompt(source_type: str, context: str | None) -> str:
     prompt = f"Analyze this {source_type} for immediate navigation hazards."
@@ -157,3 +183,20 @@ def _normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
     payload.setdefault("detected_objects", [])
     payload.setdefault("safe_path", None)
     return payload
+
+
+def _fallback_analysis(source_type: Literal["image", "video"], reason: Any) -> AnalyzeResponse:
+    return AnalyzeResponse(
+        source_type=source_type,
+        alert=HazardAlert(
+            danger_level="medium",
+            confidence=0.2,
+            summary=f"Vision analysis is unavailable: {reason}",
+            spoken_alert="Analysis unavailable. Stop and rescan.",
+            recommended_action="Stop walking, hold position, and capture another frame.",
+            hazards=["vision analysis unavailable"],
+            safe_path=None,
+            detected_objects=[],
+        ),
+        raw_model_text=None,
+    )
