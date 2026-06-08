@@ -5,8 +5,36 @@ const TEST_SPEECH_MESSAGE = 'AuraHear test. Obstacle ahead on your path.'
 /** @type {SpeechSynthesisUtterance | null} */
 let currentUtterance = null
 
+/** @type {number} */
+let speechVolume = 1
+
+/** @type {number} */
+let speechRate = 1
+
+/** @type {((speaking: boolean) => void) | null} */
+let speechActivityListener = null
+
 export function isSpeechSupported() {
   return typeof window !== 'undefined' && 'speechSynthesis' in window
+}
+
+/**
+ * @param {{ volume?: number, rate?: number }} settings
+ */
+export function setSpeechSettings({ volume, rate }) {
+  if (volume !== undefined) speechVolume = volume
+  if (rate !== undefined) speechRate = rate
+}
+
+/**
+ * @param {(speaking: boolean) => void} listener
+ */
+export function setSpeechActivityListener(listener) {
+  speechActivityListener = listener
+}
+
+function notifySpeaking(speaking) {
+  speechActivityListener?.(speaking)
 }
 
 /**
@@ -81,9 +109,6 @@ export function waitForVoices(timeoutMs = 3000) {
   })
 }
 
-/**
- * Prime speech on a user gesture so later alerts are not blocked.
- */
 export function primeSpeech() {
   if (!isSpeechSupported()) return
 
@@ -99,14 +124,15 @@ export function cancelSpeech() {
   if (!isSpeechSupported()) return
   window.speechSynthesis.cancel()
   currentUtterance = null
+  notifySpeaking(false)
 }
 
 /**
  * @param {string} message
- * @param {{ severity?: import('../api/threatContract.js').ThreatSeverity, onEnd?: () => void }} [options]
+ * @param {{ severity?: import('../api/threatContract.js').ThreatSeverity, volume?: number, rate?: number, onEnd?: () => void, onStart?: () => void }} [options]
  * @returns {Promise<{ ok: boolean, error?: string }>}
  */
-export async function speakWarningAsync(message, { severity = 'medium', onEnd } = {}) {
+export async function speakWarningAsync(message, { severity = 'medium', volume, rate, onEnd, onStart } = {}) {
   if (!isSpeechSupported()) {
     return { ok: false, error: 'unsupported' }
   }
@@ -125,7 +151,8 @@ export async function speakWarningAsync(message, { severity = 'medium', onEnd } 
   return new Promise((resolve) => {
     const utterance = new SpeechSynthesisUtterance(message)
     utterance.lang = SPEECH_LANG
-    utterance.rate = severity === 'critical' ? 1.1 : 1
+    utterance.volume = volume ?? speechVolume
+    utterance.rate = rate ?? (severity === 'critical' ? Math.max(speechRate, 1.1) : speechRate)
 
     if (severity === 'critical' || severity === 'high') {
       window.speechSynthesis.cancel()
@@ -134,11 +161,16 @@ export async function speakWarningAsync(message, { severity = 'medium', onEnd } 
     const finish = (ok, error) => {
       if (currentUtterance === utterance) {
         currentUtterance = null
+        notifySpeaking(false)
       }
       onEnd?.()
       resolve({ ok, error })
     }
 
+    utterance.onstart = () => {
+      notifySpeaking(true)
+      onStart?.()
+    }
     utterance.onend = () => finish(true)
     utterance.onerror = (event) => {
       finish(false, event.error || 'speech_error')
@@ -151,16 +183,17 @@ export async function speakWarningAsync(message, { severity = 'medium', onEnd } 
 
 /**
  * @param {string} message
- * @param {{ severity?: import('../api/threatContract.js').ThreatSeverity, onEnd?: () => void }} [options]
+ * @param {{ severity?: import('../api/threatContract.js').ThreatSeverity, volume?: number, rate?: number, onEnd?: () => void, onStart?: () => void }} [options]
  */
 export function speakWarning(message, options = {}) {
   void speakWarningAsync(message, options)
 }
 
 /**
+ * @param {{ volume?: number, rate?: number }} [options]
  * @returns {Promise<{ ok: boolean, error?: string, voiceCount: number, diagnostics: ReturnType<typeof getSpeechDiagnostics> }>}
  */
-export async function speakTest() {
+export async function speakTest({ volume, rate } = {}) {
   primeSpeech()
 
   const voices = await waitForVoices()
@@ -175,7 +208,11 @@ export async function speakTest() {
     }
   }
 
-  const result = await speakWarningAsync(TEST_SPEECH_MESSAGE, { severity: 'medium' })
+  const result = await speakWarningAsync(TEST_SPEECH_MESSAGE, {
+    severity: 'medium',
+    volume,
+    rate,
+  })
 
   return {
     ...result,
