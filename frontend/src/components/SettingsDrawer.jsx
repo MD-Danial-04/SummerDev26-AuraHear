@@ -1,5 +1,7 @@
 import {
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
   FlipVertical2,
   Gauge,
   Mic,
@@ -9,17 +11,245 @@ import {
   X,
 } from 'lucide-react'
 
+import { scaleRem, scaleSize } from '../utils/scaleFont.js'
 import { DeveloperDetails } from './DeveloperDetails.jsx'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from './ui/sheet.jsx'
 
 /** @typedef {import('../hooks/useColorTheme.js').ColorTheme} ColorTheme */
 /** @typedef {import('../hooks/useColorTheme.js').ThemeColors} ThemeColors */
 
 const THEME_OPTIONS = [
-  { value: 'white-on-black', label: 'White / Black', bg: '#000000', fg: '#FFFFFF' },
-  { value: 'black-on-white', label: 'Black / White', bg: '#FFFFFF', fg: '#000000' },
-  { value: 'yellow-on-black', label: 'Yellow / Black', bg: '#000000', fg: '#FFFF00' },
-  { value: 'green-on-black', label: 'Green / Black', bg: '#000000', fg: '#00FF00' },
+  { value: 'white-on-black', label: 'White on Black', bg: '#000000', fg: '#FFFFFF' },
+  { value: 'black-on-white', label: 'Black on White', bg: '#FFFFFF', fg: '#000000' },
+  { value: 'yellow-on-black', label: 'Yellow on Black', bg: '#000000', fg: '#FFFF00' },
+  { value: 'green-on-black', label: 'Green on Black', bg: '#000000', fg: '#00FF00' },
 ]
+
+/**
+ * @param {{
+ *   value: boolean,
+ *   onChange: (v: boolean) => void,
+ *   colors: ThemeColors,
+ *   feedback: { buttonPress: () => void },
+ *   ariaLabel: string,
+ *   fontSize: number,
+ * }} props
+ */
+function BigToggle({ value, onChange, colors, feedback, ariaLabel, fontSize }) {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        feedback.buttonPress()
+        onChange(!value)
+      }}
+      role="switch"
+      aria-checked={value}
+      aria-label={ariaLabel}
+      className="relative rounded-full transition-colors"
+      style={{
+        width: scaleSize(4.5, fontSize),
+        height: scaleSize(2.5, fontSize),
+        flexShrink: 0,
+        backgroundColor: value ? colors.accent : colors.muted,
+      }}
+    >
+      <span
+        className="absolute rounded-full transition-transform"
+        style={{
+          width: scaleSize(2, fontSize),
+          height: scaleSize(2, fontSize),
+          top: '50%',
+          left: scaleSize(0.125, fontSize),
+          transform: value
+            ? `translate(${scaleSize(2.25, fontSize)}, -50%)`
+            : 'translate(0, -50%)',
+          backgroundColor: value ? colors.background : colors.surface,
+        }}
+      />
+    </button>
+  )
+}
+
+/**
+ * @param {{
+ *   options: typeof THEME_OPTIONS,
+ *   value: ColorTheme,
+ *   onChange: (v: ColorTheme) => void,
+ *   colors: ThemeColors,
+ *   feedback: { buttonPress: () => void },
+ *   fontSize: number,
+ * }} props
+ */
+function ThemeCarousel({ options, value, onChange, colors, feedback, fontSize }) {
+  const idx = options.findIndex((o) => o.value === value)
+  const current = options[idx]
+  const arrowSize = scaleSize(6.5, fontSize)
+  const iconSize = scaleRem(3.5, fontSize)
+
+  const prev = () => {
+    feedback.buttonPress()
+    onChange(/** @type {ColorTheme} */ (options[(idx - 1 + options.length) % options.length].value))
+  }
+  const next = () => {
+    feedback.buttonPress()
+    onChange(/** @type {ColorTheme} */ (options[(idx + 1) % options.length].value))
+  }
+
+  return (
+    <div
+      className="flex items-center"
+      style={{ gap: scaleSize(1, fontSize) }}
+    >
+      <button
+        type="button"
+        onClick={prev}
+        aria-label="Previous colour theme"
+        className="active:scale-90 transition-transform flex items-center justify-center rounded-full flex-shrink-0"
+        style={{
+          width: arrowSize,
+          height: arrowSize,
+          backgroundColor: colors.surface,
+          color: colors.text,
+          border: `3px solid ${colors.border}`,
+        }}
+      >
+        <ChevronLeft style={{ width: iconSize, height: iconSize }} />
+      </button>
+
+      <div
+        className="flex-1 flex flex-col items-center justify-center rounded-2xl"
+        style={{
+          height: scaleSize(9, fontSize),
+          backgroundColor: current.bg,
+          color: current.fg,
+          border: `5px solid ${current.fg}`,
+        }}
+        aria-label={`Current theme: ${current.label}`}
+        aria-live="polite"
+      >
+        <span
+          style={{
+            fontSize: scaleRem(1.6, fontSize),
+            fontWeight: 900,
+            letterSpacing: '0.04em',
+          }}
+        >
+          {current.label}
+        </span>
+        <span
+          style={{
+            fontSize: scaleRem(1, fontSize),
+            opacity: 0.6,
+            marginTop: scaleSize(0.25, fontSize),
+          }}
+        >
+          {idx + 1} / {options.length}
+        </span>
+      </div>
+
+      <button
+        type="button"
+        onClick={next}
+        aria-label="Next colour theme"
+        className="active:scale-90 transition-transform flex items-center justify-center rounded-full flex-shrink-0"
+        style={{
+          width: arrowSize,
+          height: arrowSize,
+          backgroundColor: colors.surface,
+          color: colors.text,
+          border: `3px solid ${colors.border}`,
+        }}
+      >
+        <ChevronRight style={{ width: iconSize, height: iconSize }} />
+      </button>
+    </div>
+  )
+}
+
+/**
+ * @param {{
+ *   icon: import('react').ReactNode,
+ *   text: string,
+ *   colors: ThemeColors,
+ *   fontSize: number,
+ * }} props
+ */
+function SectionLabel({ icon, text, colors, fontSize }) {
+  return (
+    <div
+      className="flex items-center"
+      style={{
+        gap: scaleSize(0.75, fontSize),
+        marginBottom: scaleSize(1, fontSize),
+      }}
+    >
+      <span style={{ color: colors.accent }}>{icon}</span>
+      <span
+        style={{
+          fontSize: scaleRem(1.25, fontSize),
+          fontWeight: 800,
+          color: colors.text,
+          letterSpacing: '0.04em',
+        }}
+      >
+        {text}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * @param {{
+ *   fontSize: number,
+ *   colors: ThemeColors,
+ * }} props
+ */
+function SliderThumbStyles({ fontSize, colors }) {
+  const thumb = scaleSize(2.5, fontSize)
+  const track = scaleSize(0.75, fontSize)
+  const border = scaleSize(0.25, fontSize)
+  const radius = scaleSize(0.375, fontSize)
+
+  return (
+    <style>{`
+      .settings-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: ${thumb};
+        height: ${thumb};
+        border-radius: 50%;
+        background: ${colors.accent};
+        border: ${border} solid ${colors.background};
+        box-shadow: 0 0 0 2px ${colors.accent};
+        cursor: pointer;
+      }
+      .settings-slider::-moz-range-thumb {
+        width: ${thumb};
+        height: ${thumb};
+        border-radius: 50%;
+        background: ${colors.accent};
+        border: ${border} solid ${colors.background};
+        box-shadow: 0 0 0 2px ${colors.accent};
+        cursor: pointer;
+      }
+      .settings-slider::-webkit-slider-runnable-track {
+        height: ${track};
+        border-radius: ${radius};
+        background: transparent;
+      }
+      .settings-slider::-moz-range-track {
+        height: ${track};
+        border-radius: ${radius};
+        background: transparent;
+      }
+    `}</style>
+  )
+}
 
 /**
  * @param {{
@@ -67,7 +297,16 @@ export function SettingsDrawer({
   feedback,
   developerDetails,
 }) {
-  if (!open) return null
+  const iconMd = scaleRem(1.75, fontSize)
+  const iconLg = scaleRem(2, fontSize)
+  const closeSize = scaleSize(3.5, fontSize)
+  const sliderHeight = scaleSize(3.5, fontSize)
+  const sliderTrack = scaleSize(0.625, fontSize)
+  const toggleRowHeight = scaleSize(5.5, fontSize)
+  const sectionPadding = scaleSize(1.25, fontSize)
+  const sectionGap = scaleSize(2.5, fontSize)
+  const innerGap = scaleSize(0.75, fontSize)
+  const rowGap = scaleSize(1, fontSize)
 
   const connectionLabel = active
     ? connectionStatus === 'connected'
@@ -80,168 +319,369 @@ export function SettingsDrawer({
     : 'Inactive'
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end" role="presentation">
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/50"
-        onClick={onClose}
-        aria-label="Close settings"
-      />
-
-      <div
-        className="relative rounded-t-3xl overflow-y-auto max-h-[80vh]"
+    <Sheet
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) onClose()
+      }}
+    >
+      <SheetContent
+        side="bottom"
+        className="rounded-t-3xl overflow-y-auto"
         style={{
           backgroundColor: colors.background,
           color: colors.text,
-          borderTop: `2px solid ${colors.border}`,
+          borderTop: `3px solid ${colors.border}`,
+          maxHeight: '90vh',
         }}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Settings"
       >
-        <div className="flex items-center justify-between px-4 pt-4 pb-2">
-          <h2 className="text-lg font-semibold" style={{ color: colors.text }}>
-            Settings
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-xl active:scale-95"
-            style={{
-              backgroundColor: colors.surface,
-              color: colors.text,
-              border: `1px solid ${colors.border}`,
-            }}
-            aria-label="Close settings"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+        <SheetHeader
+          style={{
+            paddingTop: sectionPadding,
+            paddingBottom: scaleSize(0.5, fontSize),
+            paddingLeft: sectionPadding,
+            paddingRight: sectionPadding,
+          }}
+        >
+          <div className="flex items-center justify-between">
+            <SheetTitle
+              style={{
+                color: colors.text,
+                fontSize: scaleRem(1.6, fontSize),
+                fontWeight: 900,
+                letterSpacing: '0.04em',
+              }}
+            >
+              SETTINGS
+            </SheetTitle>
+            <button
+              type="button"
+              onClick={onClose}
+              className="active:opacity-70"
+              style={{
+                width: closeSize,
+                height: closeSize,
+                borderRadius: scaleSize(1, fontSize),
+                backgroundColor: colors.surface,
+                color: colors.text,
+                border: `2px solid ${colors.border}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+              aria-label="Close settings"
+            >
+              <X style={{ width: iconMd, height: iconMd }} />
+            </button>
+          </div>
+        </SheetHeader>
 
-        <div className="px-4 pb-6 space-y-6">
+        <SliderThumbStyles fontSize={fontSize} colors={colors} />
+
+        <div
+          style={{
+            paddingLeft: sectionPadding,
+            paddingRight: sectionPadding,
+            paddingBottom: scaleSize(2, fontSize),
+            display: 'flex',
+            flexDirection: 'column',
+            gap: sectionGap,
+          }}
+        >
           <section>
-            <label className="flex items-center gap-2 text-sm font-semibold mb-3">
-              <Palette className="w-4 h-4" style={{ color: colors.accent }} />
-              Color Theme
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              {THEME_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => {
-                    feedback.buttonPress()
-                    onColorThemeChange(/** @type {ColorTheme} */ (opt.value))
-                  }}
-                  className="py-3 px-4 rounded-xl font-semibold text-sm flex items-center gap-2 active:scale-95 transition-transform"
+            <SectionLabel
+              icon={<Palette style={{ width: iconMd, height: iconMd }} />}
+              text="COLOUR THEME"
+              colors={colors}
+              fontSize={fontSize}
+            />
+            <ThemeCarousel
+              options={THEME_OPTIONS}
+              value={colorTheme}
+              onChange={onColorThemeChange}
+              colors={colors}
+              feedback={feedback}
+              fontSize={fontSize}
+            />
+          </section>
+
+          <section>
+            <SectionLabel
+              icon={<Gauge style={{ width: iconMd, height: iconMd }} />}
+              text="SPEECH RATE"
+              colors={colors}
+              fontSize={fontSize}
+            />
+            <div
+              className="flex flex-col rounded-2xl"
+              style={{
+                gap: innerGap,
+                padding: sectionPadding,
+                backgroundColor: colors.surface,
+                border: `2px solid ${colors.border}`,
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <span
                   style={{
-                    backgroundColor: opt.bg,
-                    color: opt.fg,
-                    border:
-                      colorTheme === opt.value
-                        ? `3px solid ${colors.accent}`
-                        : `2px solid ${opt.fg}33`,
+                    fontSize: scaleRem(1, fontSize),
+                    color: colors.muted,
+                    fontWeight: 600,
                   }}
-                  aria-pressed={colorTheme === opt.value}
                 >
-                  <span
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: opt.fg, border: `1px solid ${opt.fg}80` }}
-                  />
-                  {opt.label}
-                </button>
-              ))}
+                  SLOW
+                </span>
+                <span
+                  style={{
+                    fontSize: scaleRem(1.8, fontSize),
+                    fontWeight: 900,
+                    color: colors.accent,
+                  }}
+                >
+                  {speechRate.toFixed(1)}×
+                </span>
+                <span
+                  style={{
+                    fontSize: scaleRem(1, fontSize),
+                    color: colors.muted,
+                    fontWeight: 600,
+                  }}
+                >
+                  FAST
+                </span>
+              </div>
+              <div className="relative flex items-center" style={{ height: sliderHeight }}>
+                <div
+                  className="absolute rounded-full pointer-events-none"
+                  style={{
+                    left: 0,
+                    right: 0,
+                    height: sliderTrack,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    backgroundColor: colors.background,
+                  }}
+                />
+                <div
+                  className="absolute rounded-full pointer-events-none"
+                  style={{
+                    left: 0,
+                    width: `${((speechRate - 0.5) / 1.5) * 100}%`,
+                    height: sliderTrack,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    backgroundColor: colors.accent,
+                  }}
+                />
+                <input
+                  type="range"
+                  min={0.5}
+                  max={2}
+                  step={0.1}
+                  value={speechRate}
+                  onChange={(e) => {
+                    onSpeechRateChange(parseFloat(e.target.value))
+                    feedback.sliderChange()
+                  }}
+                  className="settings-slider relative w-full"
+                  style={{
+                    height: sliderHeight,
+                    appearance: 'none',
+                    WebkitAppearance: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    zIndex: 1,
+                  }}
+                  aria-label={`Speech rate, currently ${speechRate.toFixed(1)} times`}
+                />
+              </div>
             </div>
           </section>
 
           <section>
-            <label htmlFor="settings-rate" className="flex items-center justify-between mb-2">
-              <span className="flex items-center gap-2 text-sm font-semibold">
-                <Gauge className="w-4 h-4" style={{ color: colors.accent }} />
-                Speech Rate
-              </span>
-              <span className="text-sm font-bold" style={{ color: colors.accent }}>
-                {speechRate.toFixed(1)}×
-              </span>
-            </label>
-            <input
-              id="settings-rate"
-              type="range"
-              min="0.5"
-              max="2"
-              step="0.1"
-              value={speechRate}
-              onChange={(e) => {
-                onSpeechRateChange(parseFloat(e.target.value))
-                feedback.sliderChange()
-              }}
-              className="w-full h-3 rounded-full appearance-none cursor-pointer"
-              style={{ accentColor: colors.accent, backgroundColor: colors.surface }}
-              aria-label="Adjust speech rate"
+            <SectionLabel
+              icon={<Type style={{ width: iconMd, height: iconMd }} />}
+              text="TEXT SIZE"
+              colors={colors}
+              fontSize={fontSize}
             />
-            <div className="flex justify-between text-xs mt-1" style={{ color: colors.muted }}>
-              <span>Slow 0.5×</span>
-              <span>Fast 2.0×</span>
+            <div
+              className="flex flex-col rounded-2xl"
+              style={{
+                gap: innerGap,
+                padding: sectionPadding,
+                backgroundColor: colors.surface,
+                border: `2px solid ${colors.border}`,
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <span
+                  style={{
+                    fontSize: scaleRem(0.9, fontSize),
+                    color: colors.muted,
+                    fontWeight: 600,
+                  }}
+                >
+                  SMALL
+                </span>
+                <span
+                  style={{
+                    fontSize: scaleRem(1.8, fontSize),
+                    fontWeight: 900,
+                    color: colors.accent,
+                  }}
+                >
+                  {fontSize.toFixed(1)}×
+                </span>
+                <span
+                  style={{
+                    fontSize: scaleRem(1.1, fontSize),
+                    color: colors.muted,
+                    fontWeight: 600,
+                  }}
+                >
+                  LARGE
+                </span>
+              </div>
+              <div className="relative flex items-center" style={{ height: sliderHeight }}>
+                <div
+                  className="absolute rounded-full pointer-events-none"
+                  style={{
+                    left: 0,
+                    right: 0,
+                    height: sliderTrack,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    backgroundColor: colors.background,
+                  }}
+                />
+                <div
+                  className="absolute rounded-full pointer-events-none"
+                  style={{
+                    left: 0,
+                    width: `${((fontSize - 0.5) / 1.5) * 100}%`,
+                    height: sliderTrack,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    backgroundColor: colors.accent,
+                  }}
+                />
+                <input
+                  type="range"
+                  min={0.5}
+                  max={2}
+                  step={0.1}
+                  value={fontSize}
+                  onChange={(e) => {
+                    onFontSizeChange(parseFloat(e.target.value))
+                    feedback.sliderChange()
+                  }}
+                  className="settings-slider relative w-full"
+                  style={{
+                    height: sliderHeight,
+                    appearance: 'none',
+                    WebkitAppearance: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    zIndex: 1,
+                  }}
+                  aria-label={`Text size, currently ${fontSize.toFixed(1)} times`}
+                />
+              </div>
             </div>
           </section>
 
-          <section>
-            <label htmlFor="settings-font" className="flex items-center justify-between mb-2">
-              <span className="flex items-center gap-2 text-sm font-semibold">
-                <Type className="w-4 h-4" style={{ color: colors.accent }} />
-                Font Size
-              </span>
-              <span className="text-sm font-bold" style={{ color: colors.accent }}>
-                {fontSize.toFixed(1)}×
-              </span>
-            </label>
-            <input
-              id="settings-font"
-              type="range"
-              min="0.5"
-              max="2"
-              step="0.1"
-              value={fontSize}
-              onChange={(e) => {
-                onFontSizeChange(parseFloat(e.target.value))
-                feedback.sliderChange()
+          <section style={{ display: 'flex', flexDirection: 'column', gap: rowGap }}>
+            <div
+              className="flex items-center justify-between rounded-2xl"
+              style={{
+                minHeight: toggleRowHeight,
+                paddingLeft: sectionPadding,
+                paddingRight: sectionPadding,
+                backgroundColor: colors.surface,
+                border: `2px solid ${colors.border}`,
               }}
-              className="w-full h-3 rounded-full appearance-none cursor-pointer"
-              style={{ accentColor: colors.accent, backgroundColor: colors.surface }}
-              aria-label="Adjust font size"
-            />
-            <div className="flex justify-between text-xs mt-1" style={{ color: colors.muted }}>
-              <span>Small 0.5×</span>
-              <span>Large 2.0×</span>
+            >
+              <div className="flex items-center" style={{ gap: rowGap }}>
+                <Mic
+                  style={{ width: iconLg, height: iconLg, color: colors.accent, flexShrink: 0 }}
+                />
+                <div>
+                  <p
+                    style={{
+                      fontSize: scaleRem(1.15, fontSize),
+                      fontWeight: 800,
+                      color: colors.text,
+                    }}
+                  >
+                    VOICE COMMANDS
+                  </p>
+                  <p
+                    style={{
+                      fontSize: scaleRem(0.85, fontSize),
+                      color: colors.muted,
+                      marginTop: scaleSize(0.125, fontSize),
+                    }}
+                  >
+                    Say &quot;Start&quot;, &quot;Stop&quot;, &quot;Louder&quot;, &quot;Repeat&quot;
+                  </p>
+                </div>
+              </div>
+              <BigToggle
+                value={voiceEnabled}
+                onChange={onVoiceEnabledChange}
+                colors={colors}
+                feedback={feedback}
+                ariaLabel="Toggle voice commands"
+                fontSize={fontSize}
+              />
             </div>
-          </section>
 
-          <section className="space-y-3">
-            <ToggleRow
-              icon={Mic}
-              title="Voice Commands"
-              description='"Start", "Stop", "Louder", "Repeat"'
-              checked={voiceEnabled}
-              onChange={() => {
-                feedback.buttonPress()
-                onVoiceEnabledChange(!voiceEnabled)
+            <div
+              className="flex items-center justify-between rounded-2xl"
+              style={{
+                minHeight: toggleRowHeight,
+                paddingLeft: sectionPadding,
+                paddingRight: sectionPadding,
+                backgroundColor: colors.surface,
+                border: `2px solid ${colors.border}`,
               }}
-              colors={colors}
-              ariaLabel="Toggle voice commands"
-            />
-
-            <ToggleRow
-              icon={FlipVertical2}
-              title="Controls on Top"
-              description="Swap camera and controls position"
-              checked={layoutInverted}
-              onChange={() => {
-                feedback.buttonPress()
-                onLayoutInvertedChange(!layoutInverted)
-              }}
-              colors={colors}
-              ariaLabel="Toggle layout position"
-            />
+            >
+              <div className="flex items-center" style={{ gap: rowGap }}>
+                <FlipVertical2
+                  style={{ width: iconLg, height: iconLg, color: colors.accent, flexShrink: 0 }}
+                />
+                <div>
+                  <p
+                    style={{
+                      fontSize: scaleRem(1.15, fontSize),
+                      fontWeight: 800,
+                      color: colors.text,
+                    }}
+                  >
+                    CONTROLS ON TOP
+                  </p>
+                  <p
+                    style={{
+                      fontSize: scaleRem(0.85, fontSize),
+                      color: colors.muted,
+                      marginTop: scaleSize(0.125, fontSize),
+                    }}
+                  >
+                    Swap button positions
+                  </p>
+                </div>
+              </div>
+              <BigToggle
+                value={layoutInverted}
+                onChange={onLayoutInvertedChange}
+                colors={colors}
+                feedback={feedback}
+                ariaLabel="Toggle controls on top"
+                fontSize={fontSize}
+              />
+            </div>
           </section>
 
           <section>
@@ -251,125 +691,94 @@ export function SettingsDrawer({
                 feedback.buttonPress()
                 onTestSpeech()
               }}
-              className="w-full py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 active:scale-95"
+              className="w-full rounded-2xl font-bold flex items-center justify-center active:opacity-80"
               style={{
+                gap: innerGap,
+                paddingTop: sectionPadding,
+                paddingBottom: sectionPadding,
+                paddingLeft: sectionPadding,
+                paddingRight: sectionPadding,
                 backgroundColor: colors.surface,
                 color: colors.text,
                 border: `2px solid ${colors.border}`,
+                fontSize: scaleRem(1.1, fontSize),
+                letterSpacing: '0.04em',
               }}
               aria-label="Test speech output"
             >
-              <VolumeX className="w-5 h-5" />
-              Test Speech
+              <VolumeX style={{ width: iconMd, height: iconMd }} />
+              TEST SPEECH
             </button>
             {speechTestError && (
-              <p className="mt-2 text-xs" role="alert" style={{ color: colors.accent }}>
+              <p
+                role="alert"
+                style={{
+                  color: colors.accent,
+                  fontSize: scaleRem(0.875, fontSize),
+                  marginTop: scaleSize(0.5, fontSize),
+                }}
+              >
                 {speechTestError}
               </p>
             )}
           </section>
 
           <section>
-            <p className="text-sm font-semibold mb-2" style={{ color: colors.muted }}>
-              Keyboard Shortcuts
-            </p>
-            <div className="grid grid-cols-2 gap-2 text-xs" style={{ color: colors.muted }}>
-              {[
-                ['Space', 'Start / Stop'],
-                ['↑ / ↓', 'Volume'],
-                ['← / →', 'Speech rate'],
-                ['+ / −', 'Font size'],
-              ].map(([key, desc]) => (
-                <div key={key} className="flex items-center gap-2">
-                  <kbd
-                    className="px-2 py-0.5 rounded text-xs font-mono"
+            <div
+              className="flex items-start rounded-2xl"
+              style={{
+                gap: rowGap,
+                padding: sectionPadding,
+                backgroundColor: colors.surface,
+                border: `2px solid ${colors.border}`,
+              }}
+            >
+              <AlertCircle
+                style={{
+                  width: iconMd,
+                  height: iconMd,
+                  flexShrink: 0,
+                  marginTop: scaleSize(0.125, fontSize),
+                  color: streamError ? colors.accent : colors.muted,
+                }}
+              />
+              <div>
+                <p
+                  style={{
+                    fontSize: scaleRem(1.1, fontSize),
+                    fontWeight: 800,
+                    color: colors.text,
+                  }}
+                >
+                  ALERT STREAM
+                </p>
+                <p
+                  style={{
+                    fontSize: scaleRem(0.9, fontSize),
+                    color: colors.muted,
+                    marginTop: scaleSize(0.25, fontSize),
+                  }}
+                >
+                  {connectionLabel}
+                </p>
+                {streamError && (
+                  <p
                     style={{
-                      backgroundColor: colors.surface,
-                      border: `1px solid ${colors.border}`,
+                      color: colors.text,
+                      fontSize: scaleRem(0.875, fontSize),
+                      marginTop: scaleSize(0.5, fontSize),
                     }}
                   >
-                    {key}
-                  </kbd>
-                  <span>{desc}</span>
-                </div>
-              ))}
+                    {streamError}
+                  </p>
+                )}
+              </div>
             </div>
           </section>
 
-          <div
-            className="flex items-start gap-3 p-3 rounded-xl"
-            style={{
-              backgroundColor: colors.surface,
-              border: `1px solid ${colors.border}`,
-            }}
-          >
-            <AlertCircle
-              className="w-4 h-4 flex-shrink-0 mt-0.5"
-              style={{ color: streamError ? colors.accent : colors.muted }}
-            />
-            <div className="text-xs">
-              <p className="font-semibold mb-0.5" style={{ color: colors.text }}>
-                Alert Stream
-              </p>
-              <p style={{ color: colors.muted }}>{connectionLabel}</p>
-              {streamError && (
-                <p className="mt-1" style={{ color: colors.text }}>
-                  {streamError}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <DeveloperDetails {...developerDetails} />
+          <DeveloperDetails {...developerDetails} fontSize={fontSize} />
         </div>
-      </div>
-    </div>
-  )
-}
-
-/**
- * @param {{
- *   icon: import('lucide-react').LucideIcon,
- *   title: string,
- *   description: string,
- *   checked: boolean,
- *   onChange: () => void,
- *   colors: ThemeColors,
- *   ariaLabel: string,
- * }} props
- */
-function ToggleRow({ icon: Icon, title, description, checked, onChange, colors, ariaLabel }) {
-  return (
-    <div
-      className="flex items-center justify-between p-4 rounded-xl"
-      style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}` }}
-    >
-      <div className="flex items-center gap-3">
-        <Icon className="w-5 h-5" style={{ color: colors.accent }} />
-        <div>
-          <p className="text-sm font-semibold">{title}</p>
-          <p className="text-xs" style={{ color: colors.muted }}>
-            {description}
-          </p>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onChange}
-        className="relative w-12 h-7 rounded-full transition-colors"
-        style={{ backgroundColor: checked ? colors.accent : colors.muted }}
-        role="switch"
-        aria-checked={checked}
-        aria-label={ariaLabel}
-      >
-        <span
-          className="absolute top-0.5 w-6 h-6 rounded-full transition-transform"
-          style={{
-            backgroundColor: checked ? colors.background : colors.surface,
-            transform: checked ? 'translateX(22px)' : 'translateX(2px)',
-          }}
-        />
-      </button>
-    </div>
+      </SheetContent>
+    </Sheet>
   )
 }
