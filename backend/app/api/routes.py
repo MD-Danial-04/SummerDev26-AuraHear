@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from app.config import Settings, get_settings
 from app.models import (
     AnalyzeResponse,
+    MediaChunkResponse,
+    MediaChunkStatusResponse,
     MediaUrlRequest,
     SessionAlertsResponse,
     SessionAnalyzeResponse,
@@ -10,6 +12,7 @@ from app.models import (
     SessionStartResponse,
 )
 from app.services.reka_vision import RekaVisionService
+from app.services.media_chunk_store import media_chunk_store
 from app.services.session_store import session_store
 
 router = APIRouter()
@@ -78,8 +81,10 @@ async def analyze_session_frame(
     session_id: str,
     frame: UploadFile = File(...),
     context: str | None = Form(default=None),
+    settings: Settings = Depends(get_settings),
     service: RekaVisionService = Depends(get_reka_service),
 ):
+    _enforce_session_analysis_rate(session_id, settings)
     analysis_context = _merge_context(session_store.get_context(session_id), context)
     analysis = await service.analyze_upload_safely(frame, "image", analysis_context)
     record = session_store.add_alert(session_id, analysis)
@@ -90,8 +95,10 @@ async def analyze_session_frame(
 def analyze_session_frame_url(
     session_id: str,
     request: MediaUrlRequest,
+    settings: Settings = Depends(get_settings),
     service: RekaVisionService = Depends(get_reka_service),
 ):
+    _enforce_session_analysis_rate(session_id, settings)
     analysis_context = _merge_context(
         session_store.get_context(session_id),
         request.context,
@@ -110,8 +117,10 @@ async def analyze_session_video(
     session_id: str,
     video: UploadFile = File(...),
     context: str | None = Form(default=None),
+    settings: Settings = Depends(get_settings),
     service: RekaVisionService = Depends(get_reka_service),
 ):
+    _enforce_session_analysis_rate(session_id, settings)
     analysis_context = _merge_context(session_store.get_context(session_id), context)
     analysis = await service.analyze_upload_safely(video, "video", analysis_context)
     record = session_store.add_alert(session_id, analysis)
@@ -122,8 +131,10 @@ async def analyze_session_video(
 def analyze_session_video_url(
     session_id: str,
     request: MediaUrlRequest,
+    settings: Settings = Depends(get_settings),
     service: RekaVisionService = Depends(get_reka_service),
 ):
+    _enforce_session_analysis_rate(session_id, settings)
     analysis_context = _merge_context(
         session_store.get_context(session_id),
         request.context,
@@ -137,13 +148,14 @@ def analyze_session_video_url(
     return _session_response(session_id, analysis, record)
 
 
-@router.post("/media/chunk")
+@router.post("/media/chunk", response_model=MediaChunkResponse)
 async def upload_media_chunk(
     file: UploadFile = File(...),
     session_id: str = Form(...),
     sequence: int = Form(...),
     captured_at: str = Form(...),
     capture_mode: str = Form(...),
+    settings: Settings = Depends(get_settings),
 ):
     if capture_mode != CAPTURE_MODE_VIDEO_CHUNK:
         raise HTTPException(
@@ -155,18 +167,60 @@ async def upload_media_chunk(
     if len(content) == 0:
         raise HTTPException(status_code=400, detail="Empty chunk")
 
-    return {
-        "accepted": True,
-        "session_id": session_id,
-        "sequence": sequence,
-        "bytes": len(content),
-        "captured_at": captured_at,
-    }
+    if len(content) > settings.max_chunk_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Chunk is too large. Limit is {settings.max_chunk_bytes} bytes.",
+        )
+
+    return media_chunk_store.add_chunk(
+        session_id=session_id,
+        sequence=sequence,
+        captured_at=captured_at,
+        content_type=file.content_type or "",
+        contents=content,
+    )
+
+
+@router.get("/media/session/{session_id}/chunks", response_model=MediaChunkStatusResponse)
+def get_media_chunk_status(session_id: str):
+    return media_chunk_store.status(session_id)
+
+
+@router.post("/media/session/{session_id}/analyze", response_model=SessionAnalyzeResponse)
+def analyze_reconstructed_media(
+    session_id: str,
+    context: str | None = Form(default=None),
+    settings: Settings = Depends(get_settings),
+    service: RekaVisionService = Depends(get_reka_service),
+):
+    _enforce_session_analysis_rate(session_id, settings)
+    contents, content_type = media_chunk_store.reconstruct(session_id)
+    if not contents:
+        raise HTTPException(status_code=400, detail="No contiguous media chunks found.")
+
+    analysis_context = _merge_context(session_store.get_context(session_id), context)
+    analysis = service.analyze_bytes_safely(
+        contents=contents,
+        content_type=content_type,
+        source_type="video",
+        context=analysis_context,
+    )
+    record = session_store.add_alert(session_id, analysis)
+    return _session_response(session_id, analysis, record)
 
 
 def _merge_context(session_context: str | None, request_context: str | None) -> str | None:
     contexts = [context for context in [session_context, request_context] if context]
     return " ".join(contexts) if contexts else None
+
+
+def _enforce_session_analysis_rate(session_id: str, settings: Settings) -> None:
+    session_store.enforce_analysis_rate(
+        session_id=session_id,
+        min_interval_seconds=settings.min_analysis_interval_seconds,
+        max_per_minute=settings.max_session_analyses_per_minute,
+    )
 
 
 def _session_response(

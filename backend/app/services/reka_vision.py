@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from fastapi import HTTPException, UploadFile, status
 from openai import OpenAI
+from pydantic import ValidationError
 
 from app.config import Settings
 from app.models import AnalyzeResponse, HazardAlert
@@ -52,6 +53,16 @@ class RekaVisionService:
         context: str | None = None,
     ) -> AnalyzeResponse:
         content_type = upload.content_type or ""
+        contents = await upload.read()
+        return self.analyze_bytes(contents, content_type, source_type, context)
+
+    def analyze_bytes(
+        self,
+        contents: bytes,
+        content_type: str,
+        source_type: Literal["image", "video"],
+        context: str | None = None,
+    ) -> AnalyzeResponse:
         allowed_types = IMAGE_TYPES if source_type == "image" else VIDEO_TYPES
 
         if content_type not in allowed_types:
@@ -60,11 +71,19 @@ class RekaVisionService:
                 detail=f"Unsupported {source_type} content type: {content_type}",
             )
 
-        contents = await upload.read()
         if not contents:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Uploaded file is empty.",
+            )
+
+        if len(contents) > self.settings.max_upload_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=(
+                    f"Uploaded {source_type} is too large. "
+                    f"Limit is {self.settings.max_upload_bytes} bytes."
+                ),
             )
 
         media_url = _to_data_url(content_type, contents)
@@ -78,6 +97,20 @@ class RekaVisionService:
     ) -> AnalyzeResponse:
         try:
             return await self.analyze_upload(upload, source_type, context)
+        except HTTPException as exc:
+            if exc.status_code < 500:
+                raise
+            return _fallback_analysis(source_type, exc.detail)
+
+    def analyze_bytes_safely(
+        self,
+        contents: bytes,
+        content_type: str,
+        source_type: Literal["image", "video"],
+        context: str | None = None,
+    ) -> AnalyzeResponse:
+        try:
+            return self.analyze_bytes(contents, content_type, source_type, context)
         except HTTPException as exc:
             if exc.status_code < 500:
                 raise
@@ -166,7 +199,19 @@ def _parse_alert(raw_text: str) -> HazardAlert:
             detail="Reka returned a non-JSON safety analysis.",
         ) from exc
 
-    return HazardAlert.model_validate(_normalize_payload(payload))
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Reka returned JSON that was not an object.",
+        )
+
+    try:
+        return HazardAlert.model_validate(_normalize_payload(payload))
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Reka returned invalid safety fields: {exc.errors()}",
+        ) from exc
 
 
 def _strip_code_fence(raw_text: str) -> str:
@@ -179,10 +224,34 @@ def _strip_code_fence(raw_text: str) -> str:
 
 
 def _normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    payload.setdefault("danger_level", "medium")
+    payload.setdefault("confidence", 0.0)
+    payload.setdefault("summary", "Scene analysis was incomplete.")
+    payload.setdefault("spoken_alert", "Slow down and rescan.")
+    payload.setdefault("recommended_action", "Slow down, hold position, and scan again.")
     payload.setdefault("hazards", [])
     payload.setdefault("detected_objects", [])
     payload.setdefault("safe_path", None)
+    payload["confidence"] = _clamp_confidence(payload["confidence"])
+    payload["hazards"] = _string_list(payload["hazards"])
+    payload["detected_objects"] = _string_list(payload["detected_objects"])
     return payload
+
+
+def _clamp_confidence(value: Any) -> float:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(1.0, confidence))
+
+
+def _string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if item is not None]
+    return [str(value)]
 
 
 def _fallback_analysis(source_type: Literal["image", "video"], reason: Any) -> AnalyzeResponse:

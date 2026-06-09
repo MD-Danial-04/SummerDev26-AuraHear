@@ -32,6 +32,10 @@ API runs at http://localhost:8000.
 - `REKA_MODEL`: defaults to `reka-flash`
 - `REKA_BASE_URL`: defaults to `https://api.reka.ai/v1`
 - `CORS_ORIGINS`: comma-separated frontend origins, defaults to `http://localhost:5173`
+- `MAX_UPLOAD_BYTES`: max full image/video analysis upload size, defaults to `8388608`
+- `MAX_CHUNK_BYTES`: max single media chunk size, defaults to `3145728`
+- `MIN_ANALYSIS_INTERVAL_SECONDS`: minimum delay between session analyses, defaults to `1.5`
+- `MAX_SESSION_ANALYSES_PER_MINUTE`: per-session analysis cap, defaults to `30`
 
 ## Health
 
@@ -68,9 +72,19 @@ Use sessions for repeated camera checks and alert cooldown.
 
 Session analysis suppresses repeated spoken alerts during the cooldown window.
 If Reka is unavailable, the backend returns a conservative fallback warning telling the user to stop and rescan.
+Session analysis is rate-limited before calling Reka to reduce cost and repeated requests.
 
 ## Media Chunks
 
 - `POST /api/media/chunk`: accepts video chunks with `session_id`, `sequence`, `captured_at`, and `capture_mode=video_chunk`
+- `GET /api/media/session/{session_id}/chunks`: returns stored chunk count, contiguous chunk count, reconstructed byte count, and missing sequences
+- `POST /api/media/session/{session_id}/analyze`: reconstructs contiguous chunks for a session, analyzes the resulting video, stores the alert, and returns `should_speak`
 
-This endpoint currently validates and acknowledges chunks. It does not reconstruct long streams yet.
+Chunks are stored in memory by `session_id` and `sequence`. Reconstruction joins contiguous chunks in sequence order.
+
+## Tests
+
+```bash
+cd backend
+python -m unittest discover tests
+```

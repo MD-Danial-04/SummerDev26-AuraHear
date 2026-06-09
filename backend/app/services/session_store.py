@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -26,6 +26,7 @@ class SessionState:
         self.alerts: list[SessionAlertRecord] = []
         self.last_spoken_signature: str | None = None
         self.last_spoken_at: datetime | None = None
+        self.analysis_timestamps: list[datetime] = []
 
 
 class SessionStore:
@@ -89,6 +90,40 @@ class SessionStore:
 
     def get_context(self, session_id: str) -> str | None:
         return self._get_session(session_id).context
+
+    def enforce_analysis_rate(
+        self,
+        session_id: str,
+        min_interval_seconds: float,
+        max_per_minute: int,
+    ) -> None:
+        session = self._get_session(session_id)
+        now = datetime.now(UTC)
+        window_start = now - timedelta(minutes=1)
+        session.analysis_timestamps = [
+            timestamp
+            for timestamp in session.analysis_timestamps
+            if timestamp >= window_start
+        ]
+
+        if session.analysis_timestamps:
+            elapsed = (now - session.analysis_timestamps[-1]).total_seconds()
+            if elapsed < min_interval_seconds:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=(
+                        "Analysis requested too quickly. "
+                        f"Wait {min_interval_seconds - elapsed:.2f} seconds."
+                    ),
+                )
+
+        if len(session.analysis_timestamps) >= max_per_minute:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Session analysis limit reached for this minute.",
+            )
+
+        session.analysis_timestamps.append(now)
 
     def _get_session(self, session_id: str) -> SessionState:
         session = self.sessions.get(session_id)
