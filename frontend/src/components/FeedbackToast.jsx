@@ -18,7 +18,7 @@ export function FeedbackToast({ message, duration = 2000, colors }) {
 
   return (
     <div
-      className="fixed top-20 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg z-50 animate-fade-in"
+      className="fixed top-20 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg z-[60] animate-fade-in"
       style={{
         backgroundColor: colors.surface,
         color: colors.text,

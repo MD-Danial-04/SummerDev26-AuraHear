@@ -1,191 +1,175 @@
-import { useEffect, useRef, useState } from 'react'
-import { Camera, CameraOff } from 'lucide-react'
+import { useEffect } from 'react'
+import { Camera, CameraOff, Play, Square } from 'lucide-react'
+
+import { iconStyle, scaleRem, scaleSize } from '../utils/scaleFont.js'
 
 /** @typedef {import('../hooks/useColorTheme.js').ThemeColors} ThemeColors */
 
 /**
  * @param {{
  *   videoRef: import('react').RefObject<HTMLVideoElement | null>,
- *   isActive: boolean,
- *   error: string | null,
+ *   active: boolean,
  *   colors: ThemeColors,
- *   onDoubleTap?: () => void,
- *   onSwipeUp?: () => void,
- *   onSwipeDown?: () => void,
- *   onLongPress?: () => void,
+ *   cameraError: string | null,
+ *   fontSize: number,
+ *   showControls?: boolean,
+ *   onToggle?: () => void,
+ *   reattachCamera: () => void,
+ *   expanded?: boolean,
  * }} props
  */
 export function CameraView({
   videoRef,
-  isActive,
-  error,
+  active,
   colors,
-  onDoubleTap,
-  onSwipeUp,
-  onSwipeDown,
-  onLongPress,
+  cameraError,
+  fontSize,
+  showControls = false,
+  onToggle,
+  reattachCamera,
+  expanded = false,
 }) {
-  const containerRef = useRef(null)
-  const [gestureHint, setGestureHint] = useState(null)
-  const hintTimerRef = useRef(null)
-
-  const showVideo = isActive && !error
-
   useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
+    reattachCamera()
+  }, [active, reattachCamera])
 
-    let startX = 0
-    let startY = 0
-    let startTime = 0
-    let lastTapTime = 0
-    let longPressTimer
-
-    const showHint = (msg) => {
-      if (hintTimerRef.current) clearTimeout(hintTimerRef.current)
-      setGestureHint(msg)
-      hintTimerRef.current = setTimeout(() => setGestureHint(null), 1400)
-    }
-
-    const onTouchStart = (e) => {
-      startX = e.touches[0].clientX
-      startY = e.touches[0].clientY
-      startTime = Date.now()
-      longPressTimer = setTimeout(() => {
-        onLongPress?.()
-        showHint('Repeat ↺')
-      }, 800)
-    }
-
-    const onTouchMove = () => clearTimeout(longPressTimer)
-
-    const onTouchEnd = (e) => {
-      clearTimeout(longPressTimer)
-      const dx = e.changedTouches[0].clientX - startX
-      const dy = e.changedTouches[0].clientY - startY
-      const duration = Date.now() - startTime
-      const dist = Math.sqrt(dx * dx + dy * dy)
-
-      if (dist > 60 && duration < 500 && Math.abs(dy) > Math.abs(dx)) {
-        if (dy < 0) {
-          onSwipeUp?.()
-          showHint('Volume ↑')
-        } else {
-          onSwipeDown?.()
-          showHint('Volume ↓')
-        }
-      } else if (dist < 20 && duration < 300) {
-        const now = Date.now()
-        if (now - lastTapTime < 400) {
-          onDoubleTap?.()
-          showHint('Toggle')
-          lastTapTime = 0
-        } else {
-          lastTapTime = now
-        }
-      }
-    }
-
-    el.addEventListener('touchstart', onTouchStart, { passive: true })
-    el.addEventListener('touchmove', onTouchMove, { passive: true })
-    el.addEventListener('touchend', onTouchEnd, { passive: true })
-
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart)
-      el.removeEventListener('touchmove', onTouchMove)
-      el.removeEventListener('touchend', onTouchEnd)
-      clearTimeout(longPressTimer)
-      if (hintTimerRef.current) clearTimeout(hintTimerRef.current)
-    }
-  }, [onDoubleTap, onSwipeUp, onSwipeDown, onLongPress])
+  const toggleLabel = active ? 'Stop analysis' : 'Start analysis'
+  const toggleText = active ? 'STOP' : 'START'
 
   return (
     <div
-      ref={containerRef}
-      className="relative size-full flex items-center justify-center overflow-hidden select-none"
-      style={{ backgroundColor: '#000000', touchAction: 'none' }}
-      aria-label="Camera view. Double-tap to toggle. Swipe up or down to adjust volume. Long-press to repeat."
+      className="relative min-h-0 w-full overflow-hidden"
+      style={{
+        flex: expanded ? '2 1 0%' : '1 1 0%',
+        minHeight: expanded ? '45vh' : undefined,
+        backgroundColor: '#000000',
+        borderBottom: `2px solid ${colors.border}`,
+      }}
+      aria-label={
+        showControls
+          ? 'Camera view with start and stop controls'
+          : 'Camera view'
+      }
     >
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        className={`absolute inset-0 size-full object-cover ${showVideo ? 'block' : 'hidden'}`}
-        aria-hidden="true"
-      />
+      {!cameraError && (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="absolute inset-0 size-full object-cover"
+          style={{ opacity: active ? 1 : 0 }}
+        />
+      )}
 
-      {error ? (
-        <div className="relative z-10 text-center p-8 max-w-sm">
-          <CameraOff className="w-14 h-14 mx-auto mb-4" style={{ color: '#FFFFFF' }} />
-          <p className="font-semibold mb-2" style={{ color: '#FFFFFF' }}>
-            Camera Access Error
+      {cameraError ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center gap-3">
+          <CameraOff style={iconStyle(3.5, fontSize, { color: colors.text })} />
+          <p style={{ fontSize: scaleRem(1.1, fontSize), fontWeight: 700, color: colors.text }}>
+            Camera access error
           </p>
-          <p className="text-sm" style={{ color: '#AAAAAA' }}>{error}</p>
-          <p className="text-xs mt-3" style={{ color: '#666666' }}>
-            Enable camera permissions in your browser and refresh.
-          </p>
+          <p style={{ fontSize: scaleRem(0.9, fontSize), color: colors.muted }}>{cameraError}</p>
         </div>
-      ) : !isActive ? (
-        <div className="relative z-10 text-center p-8">
-          <Camera className="w-16 h-16 mx-auto mb-4" style={{ color: '#333333' }} />
-          <p style={{ color: '#555555' }}>Camera paused</p>
-          <p className="text-sm mt-2" style={{ color: '#444444' }}>
-            Double-tap or press START
+      ) : !active ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+          <Camera style={iconStyle(4, fontSize, { color: colors.muted })} />
+          <p style={{ fontSize: scaleRem(1.1, fontSize), color: colors.muted }}>
+            Camera paused
           </p>
+          {showControls && (
+            <p style={{ fontSize: scaleRem(0.9, fontSize), color: colors.muted }}>
+              Press START to begin analysis
+            </p>
+          )}
         </div>
       ) : null}
 
-      {isActive && !error && (
+      {active && (
         <div
-          className="absolute top-3 left-3 z-10 flex items-center gap-2 px-3 py-1 rounded-full"
+          className="absolute flex items-center gap-2 rounded-full px-3 py-1"
           style={{
+            top: scaleSize(0.75, fontSize),
+            left: scaleSize(0.75, fontSize),
             backgroundColor: 'rgba(0,0,0,0.75)',
             border: `1.5px solid ${colors.accent}`,
+            zIndex: 2,
           }}
         >
-          <div
-            className="w-2 h-2 rounded-full animate-pulse"
-            style={{ backgroundColor: colors.accent }}
+          <span
+            className="rounded-full"
+            style={{
+              width: scaleSize(0.5, fontSize),
+              height: scaleSize(0.5, fontSize),
+              backgroundColor: colors.accent,
+            }}
           />
           <span
-            className="text-xs font-bold tracking-widest"
-            style={{ color: colors.accent }}
+            style={{
+              fontSize: scaleRem(0.75, fontSize),
+              fontWeight: 700,
+              letterSpacing: '0.1em',
+              color: colors.accent,
+            }}
           >
             LIVE
           </span>
         </div>
       )}
 
-      {gestureHint && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-          <div
-            className="px-8 py-4 rounded-3xl text-2xl font-bold"
-            style={{
-              backgroundColor: 'rgba(0,0,0,0.85)',
-              color: colors.text,
-              border: `2px solid ${colors.accent}`,
-            }}
-          >
-            {gestureHint}
-          </div>
-        </div>
+      {showControls && onToggle && (
+        <button
+          type="button"
+          onClick={() => onToggle()}
+          className="absolute inset-0 flex flex-col items-center justify-center active:opacity-80 transition-opacity"
+          style={{
+            gap: scaleSize(0.75, fontSize),
+            zIndex: 3,
+            backgroundColor: active ? 'transparent' : 'rgba(0,0,0,0.45)',
+          }}
+          aria-label={toggleLabel}
+          aria-pressed={active}
+        >
+          {!active && (
+            <>
+              <Play style={iconStyle(3, fontSize, { color: colors.accent })} fill="currentColor" />
+              <span
+                style={{
+                  fontSize: scaleRem(1.5, fontSize),
+                  fontWeight: 900,
+                  letterSpacing: '0.06em',
+                  color: colors.accent,
+                }}
+              >
+                {toggleText}
+              </span>
+            </>
+          )}
+          {active && (
+            <div
+              className="flex flex-col items-center justify-center"
+              style={{
+                gap: scaleSize(0.75, fontSize),
+                padding: scaleSize(1.25, fontSize),
+                borderRadius: scaleSize(1, fontSize),
+                backgroundColor: colors.surface,
+                color: colors.accent,
+                border: `3px solid ${colors.accent}`,
+              }}
+            >
+              <Square style={iconStyle(3, fontSize)} fill="currentColor" />
+              <span
+                style={{
+                  fontSize: scaleRem(1.5, fontSize),
+                  fontWeight: 900,
+                  letterSpacing: '0.06em',
+                }}
+              >
+                {toggleText}
+              </span>
+            </div>
+          )}
+        </button>
       )}
-
-      <div
-        className="absolute bottom-0 inset-x-0 z-10 flex justify-around py-2 px-4"
-        style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
-      >
-        <span className="text-xs" style={{ color: '#888' }}>
-          ↕ Volume
-        </span>
-        <span className="text-xs" style={{ color: '#888' }}>
-          2× Toggle
-        </span>
-        <span className="text-xs" style={{ color: '#888' }}>
-          Hold Repeat
-        </span>
-      </div>
     </div>
   )
 }
