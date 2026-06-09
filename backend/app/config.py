@@ -7,6 +7,10 @@ class Settings:
     reka_base_url: str
     reka_model: str
     cors_origins: list[str]
+    max_upload_bytes: int
+    max_chunk_bytes: int
+    min_analysis_interval_seconds: float
+    max_session_analyses_per_minute: int
 
     def __init__(self) -> None:
         self.reka_api_key = os.getenv("REKA_API_KEY")
@@ -17,8 +21,32 @@ class Settings:
             for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
             if origin.strip()
         ]
+        self.max_upload_bytes = _int_env("MAX_UPLOAD_BYTES", 8 * 1024 * 1024)
+        self.max_chunk_bytes = _int_env("MAX_CHUNK_BYTES", 3 * 1024 * 1024)
+        self.min_analysis_interval_seconds = _float_env(
+            "MIN_ANALYSIS_INTERVAL_SECONDS",
+            1.5,
+        )
+        self.max_session_analyses_per_minute = _int_env(
+            "MAX_SESSION_ANALYSES_PER_MINUTE",
+            30,
+        )
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def _int_env(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if not value:
+        return default
+    return int(value)
+
+
+def _float_env(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if not value:
+        return default
+    return float(value)

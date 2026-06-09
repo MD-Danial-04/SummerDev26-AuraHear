@@ -65,3 +65,23 @@ class SessionAnalyzeResponse(AnalyzeResponse):
 class SessionAlertsResponse(BaseModel):
     session_id: str
     alerts: list[SessionAlertRecord]
+
+
+class MediaChunkResponse(BaseModel):
+    accepted: bool
+    session_id: str
+    sequence: int
+    bytes: int
+    captured_at: str
+    stored_chunks: int
+    contiguous_chunks: int
+    reconstructed_bytes: int
+    missing_sequences: list[int] = Field(default_factory=list)
+
+
+class MediaChunkStatusResponse(BaseModel):
+    session_id: str
+    stored_chunks: int
+    contiguous_chunks: int
+    reconstructed_bytes: int
+    missing_sequences: list[int] = Field(default_factory=list)

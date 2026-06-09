@@ -1,4 +1,7 @@
-import edge_tts
+try:
+    import edge_tts
+except ImportError:
+    edge_tts = None
 
 DEFAULT_VOICE = "en-US-JennyNeural"
 AUDIO_MIME_TYPE = "audio/mpeg"
@@ -6,6 +9,9 @@ AUDIO_MIME_TYPE = "audio/mpeg"
 
 async def synthesize_speech(text: str) -> bytes | None:
     if not text or not text.strip():
+        return None
+
+    if edge_tts is None:
         return None
 
     try:
