@@ -3,13 +3,37 @@ import { TTS_TEST_ENDPOINT } from '../api/threatContract.js'
 /** @type {HTMLAudioElement | null} */
 let currentAudio = null
 
+/** @type {number} */
+let audioVolume = 1
+
+/** @type {((speaking: boolean) => void) | null} */
+let speechActivityListener = null
+
 export function isAudioPlaybackSupported() {
   return typeof window !== 'undefined' && 'Audio' in window
 }
 
 /**
- * Prime audio playback on a user gesture so later alerts are not blocked.
+ * @param {number} volume
  */
+export function setAudioVolume(volume) {
+  audioVolume = volume
+  if (currentAudio) {
+    currentAudio.volume = volume
+  }
+}
+
+/**
+ * @param {(speaking: boolean) => void} listener
+ */
+export function setSpeechActivityListener(listener) {
+  speechActivityListener = listener
+}
+
+function notifySpeaking(speaking) {
+  speechActivityListener?.(speaking)
+}
+
 export function primeAudio() {
   if (!isAudioPlaybackSupported()) return
 
@@ -25,14 +49,15 @@ export function stopCurrentAudio() {
   currentAudio.pause()
   currentAudio.currentTime = 0
   currentAudio = null
+  notifySpeaking(false)
 }
 
 /**
  * @param {string} url
- * @param {{ interrupt?: boolean, onEnd?: () => void }} [options]
+ * @param {{ interrupt?: boolean, volume?: number, onEnd?: () => void, onStart?: () => void }} [options]
  * @returns {Promise<{ ok: boolean, error?: string }>}
  */
-export function playWarningAudio(url, { interrupt = false, onEnd } = {}) {
+export function playWarningAudio(url, { interrupt = false, volume, onEnd, onStart } = {}) {
   if (!isAudioPlaybackSupported()) {
     return Promise.resolve({ ok: false, error: 'unsupported' })
   }
@@ -46,12 +71,14 @@ export function playWarningAudio(url, { interrupt = false, onEnd } = {}) {
   }
 
   const audio = new Audio(url)
+  audio.volume = volume ?? audioVolume
   currentAudio = audio
 
   return new Promise((resolve) => {
     const finish = (ok, error) => {
       if (currentAudio === audio) {
         currentAudio = null
+        notifySpeaking(false)
       }
       onEnd?.()
       resolve({ ok, error })
@@ -60,17 +87,24 @@ export function playWarningAudio(url, { interrupt = false, onEnd } = {}) {
     audio.onended = () => finish(true)
     audio.onerror = () => finish(false, 'audio_error')
 
-    void audio.play().then(() => {}).catch((err) => {
-      const message = err instanceof Error ? err.message : 'not_allowed'
-      finish(false, message.includes('NotAllowed') ? 'not_allowed' : 'play_failed')
-    })
+    void audio
+      .play()
+      .then(() => {
+        notifySpeaking(true)
+        onStart?.()
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : 'not_allowed'
+        finish(false, message.includes('NotAllowed') ? 'not_allowed' : 'play_failed')
+      })
   })
 }
 
 /**
+ * @param {{ volume?: number }} [options]
  * @returns {Promise<{ ok: boolean, error?: string, audioUrl?: string, source?: string }>}
  */
-export async function playTestAudio() {
+export async function playTestAudio({ volume } = {}) {
   if (!isAudioPlaybackSupported()) {
     return { ok: false, error: 'unsupported', source: 'app-tts' }
   }
@@ -87,7 +121,10 @@ export async function playTestAudio() {
       }
     }
 
-    const playResult = await playWarningAudio(payload.audioUrl, { interrupt: true })
+    const playResult = await playWarningAudio(payload.audioUrl, {
+      interrupt: true,
+      volume,
+    })
 
     return {
       ...playResult,
