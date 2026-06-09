@@ -1,3 +1,5 @@
+@import './styles/tailwind.css';
+
 *,
 *::before,
 *::after {
@@ -11,90 +13,5 @@ body {
 }
 
 #root {
-  min-height: 100svh;
-}
-
-.app {
-  max-width: 28rem;
-  margin: 0 auto;
-  padding: 1.5rem 1rem 2rem;
-}
-
-.app h1 {
-  margin: 0 0 0.25rem;
-  font-size: 1.5rem;
-}
-
-.app__subtitle {
-  margin: 0 0 1rem;
-  color: #444;
-  font-size: 0.9rem;
-}
-
-.app__preview {
-  display: block;
-  width: 100%;
-  max-height: 12rem;
-  margin-bottom: 1rem;
-  border-radius: 0.5rem;
-  background: #111;
-  object-fit: cover;
-}
-
-.app__controls {
-  display: flex;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.app__controls button {
-  flex: 1;
-  min-height: 2.75rem;
-  padding: 0.5rem 1rem;
-  font-size: 1rem;
-  border-radius: 0.5rem;
-  border: 1px solid #333;
-  background: #fff;
-  cursor: pointer;
-}
-
-.app__controls button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.app__controls button:not(:disabled):focus-visible {
-  outline: 2px solid #0066cc;
-  outline-offset: 2px;
-}
-
-.app__error {
-  margin: 0 0 1rem;
-  color: #b00020;
-  font-size: 0.9rem;
-}
-
-.app__status {
-  margin: 0;
-  font-size: 0.85rem;
-}
-
-.app__status div {
-  display: grid;
-  grid-template-columns: 8rem 1fr;
-  gap: 0.5rem;
-  padding: 0.35rem 0;
-  border-bottom: 1px solid #e5e5e5;
-}
-
-.app__status dt {
-  margin: 0;
-  font-weight: 600;
-  color: #333;
-}
-
-.app__status dd {
-  margin: 0;
-  word-break: break-all;
-  color: #111;
+  height: 100svh;
 }

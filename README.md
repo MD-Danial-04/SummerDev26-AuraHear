@@ -13,7 +13,18 @@ AuraHear/
 │   └── src/
 │       ├── main.jsx
 │       ├── App.jsx
-│       └── index.css
+│       ├── routes.jsx
+│       ├── index.css
+│       ├── context/AppProvider.jsx
+│       ├── pages/
+│       │   ├── WalkingPage.jsx
+│       │   └── NavigationPage.jsx
+│       ├── components/
+│       │   ├── SettingsDrawer.jsx
+│       │   ├── FeedbackToast.jsx
+│       │   └── ui/sheet.jsx
+│       ├── hooks/
+│       └── api/
 ├── backend/
 │   ├── main.py
 │   ├── requirements.txt
