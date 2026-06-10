@@ -295,6 +295,7 @@ def _session_response(
     return SessionAnalyzeResponse(
         source_type=analysis.source_type,
         alert=analysis.alert,
+        timeline=analysis.timeline,
         raw_model_text=analysis.raw_model_text,
         session_id=session_id,
         alert_id=record.alert_id,
