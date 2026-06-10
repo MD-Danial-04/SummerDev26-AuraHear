@@ -6,6 +6,9 @@ class Settings:
     reka_api_key: str | None
     reka_base_url: str
     reka_model: str
+    osm_nominatim_base_url: str
+    osm_routing_base_url: str
+    osm_user_agent: str
     cors_origins: list[str]
     max_upload_bytes: int
     max_chunk_bytes: int
@@ -16,6 +19,18 @@ class Settings:
         self.reka_api_key = os.getenv("REKA_API_KEY")
         self.reka_base_url = os.getenv("REKA_BASE_URL", "https://api.reka.ai/v1")
         self.reka_model = os.getenv("REKA_MODEL", "reka-flash")
+        self.osm_nominatim_base_url = os.getenv(
+            "OSM_NOMINATIM_BASE_URL",
+            "https://nominatim.openstreetmap.org",
+        )
+        self.osm_routing_base_url = os.getenv(
+            "OSM_ROUTING_BASE_URL",
+            "https://router.project-osrm.org",
+        )
+        self.osm_user_agent = os.getenv(
+            "OSM_USER_AGENT",
+            "AuraHearHackathon/1.0 (contact: team@example.com)",
+        )
         self.cors_origins = [
             origin.strip()
             for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")

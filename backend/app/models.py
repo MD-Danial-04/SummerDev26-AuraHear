@@ -14,6 +14,67 @@ class MediaUrlRequest(BaseModel):
     )
 
 
+class Coordinate(BaseModel):
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
+
+
+class GeocodeRequest(BaseModel):
+    query: str = Field(..., min_length=2, description="Address or landmark to look up.")
+    limit: int = Field(default=5, ge=1, le=10)
+
+
+class GeocodeResult(BaseModel):
+    name: str
+    lat: float
+    lon: float
+
+
+class GeocodeResponse(BaseModel):
+    query: str
+    results: list[GeocodeResult] = Field(default_factory=list)
+
+
+class NavigationRouteRequest(BaseModel):
+    origin: Coordinate
+    destination: Coordinate
+    origin_name: str | None = Field(
+        default=None,
+        description="Optional human-readable label for the origin.",
+    )
+    destination_name: str | None = Field(
+        default=None,
+        description="Optional human-readable label for the destination.",
+    )
+
+
+class NavigationStep(BaseModel):
+    instruction: str
+    spoken_instruction: str
+    distance_meters: float
+    duration_seconds: float
+    street_name: str | None = None
+    maneuver_type: str | None = None
+    maneuver_modifier: str | None = None
+    location: Coordinate
+
+
+class NavigationSummary(BaseModel):
+    distance_meters: float
+    duration_seconds: float
+    estimated_minutes: int
+
+
+class NavigationRouteResponse(BaseModel):
+    origin: Coordinate
+    destination: Coordinate
+    origin_name: str | None = None
+    destination_name: str | None = None
+    summary: NavigationSummary
+    steps: list[NavigationStep] = Field(default_factory=list)
+    path: list[Coordinate] = Field(default_factory=list)
+
+
 class HazardAlert(BaseModel):
     danger_level: DangerLevel
     confidence: float = Field(..., ge=0, le=1)

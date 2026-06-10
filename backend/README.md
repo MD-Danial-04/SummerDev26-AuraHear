@@ -1,6 +1,7 @@
 # AuraHear Backend
 
 FastAPI backend for AuraHear's Reka-powered assistive safety analysis.
+It also includes OpenStreetMap-powered walking navigation so the app can guide a user from point A to point B and request a fresh route when they need to reroute.
 
 ## Setup
 
@@ -31,6 +32,9 @@ API runs at http://localhost:8000.
 - `REKA_API_KEY`: required for Reka analysis
 - `REKA_MODEL`: defaults to `reka-flash`
 - `REKA_BASE_URL`: defaults to `https://api.reka.ai/v1`
+- `OSM_NOMINATIM_BASE_URL`: defaults to `https://nominatim.openstreetmap.org`
+- `OSM_ROUTING_BASE_URL`: defaults to `https://router.project-osrm.org`
+- `OSM_USER_AGENT`: user-agent sent to OpenStreetMap-compatible services
 - `CORS_ORIGINS`: comma-separated frontend origins, defaults to `http://localhost:5173`
 - `MAX_UPLOAD_BYTES`: max full image/video analysis upload size, defaults to `8388608`
 - `MAX_CHUNK_BYTES`: max single media chunk size, defaults to `3145728`
@@ -40,6 +44,24 @@ API runs at http://localhost:8000.
 ## Health
 
 - `GET /api/health`: returns backend status
+
+## Navigation
+
+- `POST /api/navigation/geocode`: looks up an address or landmark and returns candidate coordinates
+- `POST /api/navigation/route`: returns a walking route with path coordinates and spoken turn-by-turn instructions
+
+Example route request:
+
+```json
+{
+  "origin": { "lat": 1.2834, "lon": 103.8607 },
+  "destination": { "lat": 1.3006, "lon": 103.8455 },
+  "origin_name": "Marina Bay Sands",
+  "destination_name": "Plaza Singapura"
+}
+```
+
+The frontend can call the route endpoint again with the user's updated live position to reroute around a blocked sidewalk, roadwork area, or other obstacle surfaced by the Reka vision analysis.
 
 ## One-Off Analysis
 
