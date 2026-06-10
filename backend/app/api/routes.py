@@ -4,9 +4,13 @@ from fastapi.responses import Response, StreamingResponse
 from app.config import Settings, get_settings
 from app.models import (
     AnalyzeResponse,
+    GeocodeRequest,
+    GeocodeResponse,
     MediaChunkResponse,
     MediaChunkStatusResponse,
     MediaUrlRequest,
+    NavigationRouteRequest,
+    NavigationRouteResponse,
     SessionAlertsResponse,
     SessionAnalyzeResponse,
     SessionStartRequest,
@@ -19,6 +23,7 @@ from app.services.mock_threats import (
     ensure_test_audio,
     mock_warning_events,
 )
+from app.services.osm_navigation import OSMNavigationService
 from app.services.reka_vision import RekaVisionService
 from app.services.media_chunk_store import media_chunk_store
 from app.services.session_store import session_store
@@ -91,6 +96,28 @@ async def tts_test_audio():
 
 def get_reka_service(settings: Settings = Depends(get_settings)) -> RekaVisionService:
     return RekaVisionService(settings)
+
+
+def get_navigation_service(
+    settings: Settings = Depends(get_settings),
+) -> OSMNavigationService:
+    return OSMNavigationService(settings)
+
+
+@router.post("/navigation/geocode", response_model=GeocodeResponse)
+def geocode_location(
+    request: GeocodeRequest,
+    service: OSMNavigationService = Depends(get_navigation_service),
+):
+    return service.geocode(request.query, request.limit)
+
+
+@router.post("/navigation/route", response_model=NavigationRouteResponse)
+def build_navigation_route(
+    request: NavigationRouteRequest,
+    service: OSMNavigationService = Depends(get_navigation_service),
+):
+    return service.build_route(request)
 
 
 @router.post("/analyze/frame", response_model=AnalyzeResponse)
