@@ -8,6 +8,7 @@ import {
   SINGAPORE_DEFAULT_ZOOM,
 } from '../../config/singaporeMap.js'
 import { MapFlyTo } from './MapFlyTo.jsx'
+import { MapResize } from './MapResize.jsx'
 
 /**
  * @param {{
@@ -27,6 +28,7 @@ export function SingaporeMap({ children, flyToTarget, flyToZoom = 15 }) {
       scrollWheelZoom
     >
       <TileLayer attribution={OSM_ATTRIBUTION} url={OSM_TILE_URL} />
+      <MapResize />
       <MapFlyTo target={flyToTarget} zoom={flyToZoom} />
       {children}
     </MapContainer>

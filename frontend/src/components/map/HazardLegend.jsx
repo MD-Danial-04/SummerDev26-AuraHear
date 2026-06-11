@@ -3,7 +3,7 @@ import {
   HAZARD_SEVERITIES,
 } from '../../data/hazardTypes.js'
 
-export function HazardLegend() {
+function LegendContent() {
   return (
     <div className="space-y-4">
       <div>
@@ -40,5 +40,24 @@ export function HazardLegend() {
         </ul>
       </div>
     </div>
+  )
+}
+
+export function HazardLegend() {
+  return (
+    <>
+      <details className="lg:hidden">
+        <summary className="cursor-pointer text-sm font-semibold text-gray-900">
+          Legend
+        </summary>
+        <div className="mt-2">
+          <LegendContent />
+        </div>
+      </details>
+
+      <div className="hidden lg:block">
+        <LegendContent />
+      </div>
+    </>
   )
 }
