@@ -30,7 +30,12 @@ export async function startAnalysisSession({
 
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
-    throw new Error(payload?.detail ?? 'Failed to start live analysis session.')
+    const detail =
+      payload?.detail ??
+      (payload === null
+        ? `Backend unreachable (${response.status}). Check Vercel API routing.`
+        : 'Failed to start live analysis session.')
+    throw new Error(typeof detail === 'string' ? detail : 'Failed to start live analysis session.')
   }
 
   return payload
@@ -78,7 +83,12 @@ export async function analyzeSessionFrame(
 
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
-    throw new Error(payload?.detail ?? 'Frame analysis failed.')
+    const detail =
+      payload?.detail ??
+      (payload === null
+        ? `Backend unreachable (${response.status}). Check Vercel API routing.`
+        : 'Frame analysis failed.')
+    throw new Error(typeof detail === 'string' ? detail : 'Frame analysis failed.')
   }
 
   return payload
