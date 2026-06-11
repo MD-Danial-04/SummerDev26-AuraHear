@@ -63,9 +63,10 @@ API at http://localhost:8000 (health check: http://localhost:8000/api/health).
 The repo uses `vercel.json` with separate frontend and backend services:
 
 - **Frontend** — `routePrefix: /` (Vite SPA)
-- **Backend** — `routePrefix: /api` (FastAPI; must match frontend fetch paths like `/api/health`)
+- **Backend** — `routePrefix: /_/backend` (FastAPI internal mount)
+- **Public API** — rewrites map `/api/*` → `/_/backend/api/*` so frontend fetch paths stay `/api/health`, `/api/session/start`, etc.
 
-Do not mount the backend under `/_/backend` — the app calls `/api/*` and requests would hit the SPA (405 on POST).
+Do not set backend `routePrefix` to `/api` alone — Vercel strips that prefix before forwarding, while FastAPI routes are registered at `/api/*`, which causes 404. Without rewrites, `/api/*` hits the SPA (405 on POST).
 
 For live Reka frame analysis in production:
 
@@ -82,6 +83,6 @@ curl -s -X POST https://YOUR-APP.vercel.app/api/session/start \
   -d '{"alert_cooldown_seconds":6}'
 ```
 
-Both should return JSON, not HTML. If you still get 405 on `/api/*`, the backend may not be redeployed yet (pre-fix backend was only reachable at `/_/backend/api/*`).
+Both should return JSON, not HTML or `{"detail":"Not Found"}`.
 
 Walking mode captures camera frames every ~1.8s and calls `POST /api/session/{id}/analyze/frame`. Without `REKA_API_KEY`, the backend returns a spoken fallback: *"Analysis unavailable. Stop and rescan."*
