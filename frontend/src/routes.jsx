@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router'
 
 import { Root } from './components/Root.jsx'
+import { AuthorityMapPage } from './pages/AuthorityMapPage.jsx'
 import { NavigationPage } from './pages/NavigationPage.jsx'
 import { WalkingPage } from './pages/WalkingPage.jsx'
 
@@ -11,6 +12,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: WalkingPage },
       { path: 'navigation', Component: NavigationPage },
+      { path: 'authority', Component: AuthorityMapPage },
     ],
   },
 ])

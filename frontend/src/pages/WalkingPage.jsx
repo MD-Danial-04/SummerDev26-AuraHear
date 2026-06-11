@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router'
-import { MapPin, Settings, Volume2, VolumeX } from 'lucide-react'
+import { Map, MapPin, Settings, Volume2, VolumeX } from 'lucide-react'
 
 import { CameraView } from '../components/CameraView.jsx'
 import { useApp } from '../context/AppContext.js'
@@ -190,6 +190,41 @@ export function WalkingPage() {
           }}
         >
           NAVIGATE
+        </span>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => {
+          feedback.buttonPress()
+          navigate('/authority')
+        }}
+        className="flex-1 flex flex-col items-center justify-center gap-3 active:opacity-80 transition-opacity"
+        style={{
+          backgroundColor: colors.surface,
+          color: colors.text,
+          borderRight: `2px solid ${colors.border}`,
+          minHeight: '14vh',
+        }}
+        aria-label="View hazard map"
+      >
+        <Map
+          style={{
+            width: '12vw',
+            height: '12vw',
+            maxWidth: 68,
+            maxHeight: 68,
+            color: colors.accent,
+          }}
+        />
+        <span
+          style={{
+            fontSize: `${fontSize * 1.3}rem`,
+            fontWeight: 800,
+            letterSpacing: '0.05em',
+          }}
+        >
+          HAZARD MAP
         </span>
       </button>
 
