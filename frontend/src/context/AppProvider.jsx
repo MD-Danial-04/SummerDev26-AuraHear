@@ -148,7 +148,9 @@ function useAppState(videoRef) {
         alertCooldownSeconds: 6,
       })
       setSessionId(session.session_id)
-      frameAnalysis.start(session.session_id, LIVE_ANALYSIS_CONTEXT)
+      frameAnalysis.start(session.session_id, LIVE_ANALYSIS_CONTEXT, {
+        alertCooldownSeconds: 6,
+      })
       setActive(true)
       return true
     } catch (err) {

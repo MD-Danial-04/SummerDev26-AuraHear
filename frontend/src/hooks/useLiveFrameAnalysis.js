@@ -47,6 +47,7 @@ export function useLiveFrameAnalysis(videoRef) {
   const timerRef = useRef(null)
   const sessionIdRef = useRef(null)
   const contextRef = useRef(null)
+  const alertCooldownRef = useRef(6)
   const requestInFlightRef = useRef(false)
 
   const [status, setStatus] = useState('idle')
@@ -95,6 +96,7 @@ export function useLiveFrameAnalysis(videoRef) {
     try {
       const result = await analyzeSessionFrame(activeSessionId, frame, {
         context: contextRef.current ?? undefined,
+        alertCooldownSeconds: alertCooldownRef.current,
       })
 
       if (sessionIdRef.current !== activeSessionId) return
@@ -118,9 +120,10 @@ export function useLiveFrameAnalysis(videoRef) {
   }, [scheduleNextRun, videoRef])
 
   const start = useCallback(
-    (sessionId, context = null) => {
+    (sessionId, context = null, { alertCooldownSeconds = 6 } = {}) => {
       sessionIdRef.current = sessionId
       contextRef.current = context
+      alertCooldownRef.current = alertCooldownSeconds
       setError(null)
       setLatestResult(null)
       setAnalysisCount(0)
