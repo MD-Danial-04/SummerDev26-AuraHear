@@ -60,6 +60,7 @@ function shouldAnnounce(result) {
   if (!result?.should_speak) return false
   const alert = result.alert
   if (!alert?.spoken_alert) return false
+  if (result.analysis_mode === 'fallback') return true
   if (alert.danger_level === 'none') return false
   if (alert.danger_level === 'low' && alert.hazards.length === 0) return false
   return true

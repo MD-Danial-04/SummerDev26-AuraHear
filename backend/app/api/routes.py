@@ -324,6 +324,7 @@ def _session_response(
         alert=analysis.alert,
         timeline=analysis.timeline,
         raw_model_text=analysis.raw_model_text,
+        analysis_mode=analysis.analysis_mode,
         session_id=session_id,
         alert_id=record.alert_id,
         should_speak=record.should_speak,

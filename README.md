@@ -57,3 +57,13 @@ python main.py
 ```
 
 API at http://localhost:8000 (health check: http://localhost:8000/api/health).
+
+### Deployment (Vercel)
+
+The repo uses `vercel.json` with separate frontend and backend services. For live Reka frame analysis in production:
+
+1. In Vercel → Project → Settings → Environment Variables, add **`REKA_API_KEY`** to the **backend** service (Production and Preview).
+2. Optional: `REKA_MODEL` (default `reka-flash`), `CORS_ORIGINS` if calling the API cross-origin.
+3. Redeploy after saving env vars — existing deployments do not pick up new variables automatically.
+
+Walking mode captures camera frames every ~1.8s and calls `POST /api/session/{id}/analyze/frame`. Without `REKA_API_KEY`, the backend returns a spoken fallback: *"Analysis unavailable. Stop and rescan."*

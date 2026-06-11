@@ -807,4 +807,5 @@ def _fallback_analysis(
             detected_objects=[],
         ),
         raw_model_text=raw_model_text,
+        analysis_mode="fallback",
     )
