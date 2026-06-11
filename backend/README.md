@@ -70,6 +70,11 @@ The frontend can call the route endpoint again with the user's updated live posi
 - `POST /api/analyze/frame-url`: JSON body with `media_url` and optional `context`
 - `POST /api/analyze/video-url`: JSON body with `media_url` and optional `context`
 
+Uploaded video files are analyzed by sampling representative frames locally with
+`ffmpeg`/`ffprobe`, then sending those frames through the image-analysis path and
+merging the results into a single video alert. This makes local video uploads
+follow the same reliable frame-based flow as live analysis.
+
 Analysis responses include:
 
 - `danger_level`: `none`, `low`, `medium`, `high`, or `critical`
@@ -80,6 +85,9 @@ Analysis responses include:
 - `hazards`
 - `safe_path`
 - `detected_objects`
+- `timeline`: for video uploads, a sampled-frame timeline with `timestamp_seconds`,
+  `danger_level`, `confidence`, `summary`, `spoken_alert`, `recommended_action`,
+  `hazards`, `safe_path`, and `detected_objects`
 
 ## Session Analysis
 

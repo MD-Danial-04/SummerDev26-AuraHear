@@ -309,13 +309,17 @@ export function SettingsDrawer({
   const rowGap = scaleSize(1, fontSize)
 
   const connectionLabel = active
-    ? connectionStatus === 'connected'
-      ? 'Listening for hazards'
-      : connectionStatus === 'connecting'
-        ? 'Connecting to alert stream...'
-        : connectionStatus === 'error'
-          ? 'Alert stream error'
-          : 'Waiting for connection'
+    ? connectionStatus === 'active'
+      ? 'Analyzing live frames'
+      : connectionStatus === 'starting'
+        ? 'Starting live analysis...'
+        : connectionStatus === 'waiting_camera'
+          ? 'Waiting for camera frames...'
+          : connectionStatus === 'analyzing'
+            ? 'Analyzing latest frame...'
+            : connectionStatus === 'error'
+              ? 'Live analysis error'
+              : 'Preparing live analysis'
     : 'Inactive'
 
   return (
@@ -750,7 +754,7 @@ export function SettingsDrawer({
                     color: colors.text,
                   }}
                 >
-                  ALERT STREAM
+                  LIVE ANALYSIS
                 </p>
                 <p
                   style={{

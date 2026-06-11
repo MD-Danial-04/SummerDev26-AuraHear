@@ -1,26 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { startAnalysisSession } from '../api/sessionAnalysisClient.js'
 import { FeedbackToast } from '../components/FeedbackToast.jsx'
 import { SettingsDrawer } from '../components/SettingsDrawer.jsx'
 import { useCameraStream } from '../hooks/useCameraStream.js'
-import { useChunkRecorder } from '../hooks/useChunkRecorder.js'
 import { useColorTheme } from '../hooks/useColorTheme.js'
 import { useInteractionFeedback } from '../hooks/useInteractionFeedback.js'
-import { useThreatRelay } from '../hooks/useThreatRelay.js'
-import { useThreatStream } from '../hooks/useThreatStream.js'
-import { useUploadQueue } from '../hooks/useUploadQueue.js'
+import { useLiveFrameAnalysis } from '../hooks/useLiveFrameAnalysis.js'
 import { useVoiceCommands } from '../hooks/useVoiceCommands.js'
 import {
+  isAudioPlaybackSupported,
   playTestAudio,
-  playWarningAudio,
   primeAudio,
   setAudioVolume,
   setSpeechActivityListener as setAudioSpeechActivityListener,
   stopCurrentAudio,
 } from '../utils/audioAlert.js'
-import { vibrateForSeverity } from '../utils/hapticAlert.js'
+import { isVibrationSupported, vibrateForSeverity } from '../utils/hapticAlert.js'
 import {
+  cancelSpeech,
   getSpeechDiagnostics,
+  isSpeechSupported,
   primeSpeech,
   setSpeechActivityListener as setBrowserSpeechActivityListener,
   setSpeechSettings,
@@ -46,12 +46,33 @@ const THEME_NAMES = {
   'green-on-black': 'Green on Black',
 }
 
+const LIVE_ANALYSIS_CONTEXT =
+  'User is walking forward and only needs hazards affecting their path in the next 2 to 3 seconds.'
+
+function toThreatSeverity(dangerLevel) {
+  if (dangerLevel === 'critical') return 'critical'
+  if (dangerLevel === 'high') return 'high'
+  if (dangerLevel === 'medium') return 'medium'
+  return 'low'
+}
+
+function shouldAnnounce(result) {
+  if (!result?.should_speak) return false
+  const alert = result.alert
+  if (!alert?.spoken_alert) return false
+  if (alert.danger_level === 'none') return false
+  if (alert.danger_level === 'low' && alert.hazards.length === 0) return false
+  return true
+}
+
 /**
  * @param {import('react').RefObject<HTMLVideoElement | null>} videoRef
  */
 function useAppState(videoRef) {
   const [active, setActive] = useState(false)
   const [sessionId, setSessionId] = useState(null)
+  const [lastSpeechSource, setLastSpeechSource] = useState('idle')
+  const [latestGuidance, setLatestGuidance] = useState(null)
   const [volume, setVolume] = useState(0.8)
   const [speechRate, setSpeechRate] = useState(1)
   const [fontSize, setFontSize] = useState(1)
@@ -72,14 +93,8 @@ function useAppState(videoRef) {
   const { theme, setTheme, colors } = useColorTheme('white-on-black')
   const feedback = useInteractionFeedback()
   const camera = useCameraStream(videoRef)
-  const recorder = useChunkRecorder()
-  const uploadQueue = useUploadQueue()
-  const threatStream = useThreatStream(active ? sessionId : null)
-  const threatRelay = useThreatRelay(threatStream.latestWarning)
-
-  const latestRelayedWarning = threatRelay.relayedWarnings[0] ?? null
+  const frameAnalysis = useLiveFrameAnalysis(videoRef)
   const cameraError = camera.error
-  const recorderError = recorder.error
 
   useEffect(() => {
     setAudioVolume(volume)
@@ -120,42 +135,39 @@ function useAppState(videoRef) {
     primeAudio()
     primeSpeech()
 
-    const id = crypto.randomUUID()
-    uploadQueue.beginSession(id)
-    setSessionId(id)
-
     const stream = await camera.start()
     if (!stream) {
-      uploadQueue.endSession()
-      setSessionId(null)
-      if (camera.error) showToast(camera.error)
+      showToast(camera.error ?? 'Failed to access camera.')
       return false
     }
 
-    const onChunk = (blob) => {
-      uploadQueue.enqueue(blob, recorder.mimeType ?? blob.type)
-    }
-
-    const started = recorder.start(stream, onChunk)
-    if (!started) {
+    try {
+      const session = await startAnalysisSession({
+        context: LIVE_ANALYSIS_CONTEXT,
+        alertCooldownSeconds: 6,
+      })
+      setSessionId(session.session_id)
+      frameAnalysis.start(session.session_id, LIVE_ANALYSIS_CONTEXT)
+      setActive(true)
+      return true
+    } catch (err) {
       camera.stop()
-      uploadQueue.endSession()
-      setSessionId(null)
-      if (recorder.error) showToast(recorder.error)
+      const message =
+        err instanceof Error ? err.message : 'Failed to start live analysis.'
+      showToast(message)
       return false
     }
-
-    setActive(true)
-    return true
-  }, [camera, recorder, uploadQueue, showToast])
+  }, [camera, frameAnalysis, showToast])
 
   const stopCapture = useCallback(() => {
-    recorder.stop()
+    frameAnalysis.stop()
     camera.stop()
-    uploadQueue.endSession()
+    stopCurrentAudio()
+    cancelSpeech()
     setActive(false)
     setSessionId(null)
-  }, [camera, recorder, uploadQueue])
+    setLastSpeechSource('idle')
+  }, [camera, frameAnalysis])
 
   const handleStart = useCallback(async () => {
     if (!active) {
@@ -199,26 +211,19 @@ function useAppState(videoRef) {
   }, [showToast, feedback])
 
   const handleRepeat = useCallback(async () => {
-    const warning = latestRelayedWarning
-    if (!warning?.message) return
+    if (!latestGuidance?.message) return
 
     stopCurrentAudio()
+    cancelSpeech()
     primeAudio()
-
-    if (warning.audioUrl) {
-      const result = await playWarningAudio(warning.audioUrl, {
-        interrupt: true,
-        volume,
-      })
-      if (result.ok) {
-        showToast('Repeating…')
-        return
-      }
-    }
-
-    await speakWarningAsync(warning.message, { volume, rate: speechRate })
+    const result = await speakWarningAsync(latestGuidance.message, {
+      severity: latestGuidance.severity,
+      volume,
+      rate: speechRate,
+    })
+    setLastSpeechSource(result.ok ? 'system-tts' : 'idle')
     showToast('Repeating…')
-  }, [latestRelayedWarning, volume, speechRate, showToast])
+  }, [latestGuidance, volume, speechRate, showToast])
 
   const handleThemeChange = useCallback(
     (newTheme) => {
@@ -265,6 +270,44 @@ function useAppState(videoRef) {
       error: fallback.ok ? null : (appResult.error ?? fallback.error ?? 'speech_error'),
     })
   }, [volume, speechRate, showToast])
+
+  useEffect(() => {
+    const result = frameAnalysis.latestResult
+    if (!result) return
+
+    const severity = toThreatSeverity(result.alert.danger_level)
+    setLatestGuidance({
+      message: result.alert.spoken_alert,
+      severity,
+      recommendedAction: result.alert.recommended_action,
+      safePath: result.alert.safe_path,
+      hazards: result.alert.hazards,
+      analysisMode: result.analysis_mode ?? 'reka',
+    })
+
+    if (!shouldAnnounce(result)) {
+      return
+    }
+
+    vibrateForSeverity(severity)
+    stopCurrentAudio()
+    cancelSpeech()
+
+    void speakWarningAsync(result.alert.spoken_alert, {
+      severity,
+      volume,
+      rate: speechRate,
+    }).then((speechResult) => {
+      setLastSpeechSource(speechResult.ok ? 'system-tts' : 'idle')
+    })
+
+    showToast(result.alert.recommended_action)
+  }, [frameAnalysis.latestResult, showToast, speechRate, volume])
+
+  useEffect(() => {
+    if (!frameAnalysis.error) return
+    showToast(frameAnalysis.error)
+  }, [frameAnalysis.error, showToast])
 
   useVoiceCommands(voiceEnabled, {
     onStart: () => void handleStart(),
@@ -343,21 +386,30 @@ function useAppState(videoRef) {
     toastKey,
     speechTestError,
     handleTestSpeech,
-    threatStream,
     developerDetails: {
       colors,
       sessionId,
-      lastSequence: uploadQueue.lastSequence,
-      uploadStatus: uploadQueue.uploadStatus,
-      recorderMimeType: recorder.mimeType,
       active,
-      connectionStatus: threatStream.connectionStatus,
-      lastSpeechSource: threatRelay.lastSpeechSource,
+      connectionStatus: frameAnalysis.status,
+      analysisMode: frameAnalysis.latestResult?.analysis_mode ?? '—',
+      analysisCount: frameAnalysis.analysisCount,
+      lastAnalyzedAt: frameAnalysis.lastAnalyzedAt ?? '—',
+      latestDanger: frameAnalysis.latestResult?.alert.danger_level ?? '—',
+      latestAlert: frameAnalysis.latestResult?.alert.spoken_alert ?? '—',
+      latestAction: frameAnalysis.latestResult?.alert.recommended_action ?? '—',
+      latestSafePath: frameAnalysis.latestResult?.alert.safe_path ?? '—',
+      lastSpeechSource,
       speechDebug,
-      capabilities: threatRelay.capabilities,
-      recorderError,
+      capabilities: {
+        audio: isAudioPlaybackSupported(),
+        speech: isSpeechSupported(),
+        vibration: isVibrationSupported(),
+      },
+      analysisError: frameAnalysis.error,
       cameraError,
     },
+    analysisStatus: frameAnalysis.status,
+    analysisError: frameAnalysis.error,
   }
 }
 
@@ -384,7 +436,8 @@ export function AppProvider({ children }) {
     feedback,
     speechTestError,
     handleTestSpeech,
-    threatStream,
+    analysisStatus,
+    analysisError,
     active,
     developerDetails,
   } = app
@@ -420,8 +473,8 @@ export function AppProvider({ children }) {
           onLayoutInvertedChange={setLayoutInverted}
           onTestSpeech={() => void handleTestSpeech()}
           speechTestError={speechTestError}
-          connectionStatus={threatStream.connectionStatus}
-          streamError={threatStream.error}
+          connectionStatus={analysisStatus}
+          streamError={analysisError}
           active={active}
           colors={colors}
           feedback={feedback}

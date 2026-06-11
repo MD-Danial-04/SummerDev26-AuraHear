@@ -7,15 +7,19 @@ import { scaleRem } from '../utils/scaleFont.js'
  *   colors: ThemeColors,
  *   fontSize?: number,
  *   sessionId: string | null,
- *   lastSequence: number,
- *   uploadStatus: string,
- *   recorderMimeType: string | null,
  *   active: boolean,
  *   connectionStatus: string,
+ *   analysisMode: string,
+ *   analysisCount: number,
+ *   lastAnalyzedAt: string,
+ *   latestDanger: string,
+ *   latestAlert: string,
+ *   latestAction: string,
+ *   latestSafePath: string,
  *   lastSpeechSource: string,
  *   speechDebug: { status: string, source: string, speechState: string, error: string | null },
  *   capabilities: { audio: boolean, speech: boolean, vibration: boolean },
- *   recorderError: string | null,
+ *   analysisError: string | null,
  *   cameraError: string | null,
  * }} props
  */
@@ -23,15 +27,19 @@ export function DeveloperDetails({
   colors,
   fontSize = 1,
   sessionId,
-  lastSequence,
-  uploadStatus,
-  recorderMimeType,
   active,
   connectionStatus,
+  analysisMode,
+  analysisCount,
+  lastAnalyzedAt,
+  latestDanger,
+  latestAlert,
+  latestAction,
+  latestSafePath,
   lastSpeechSource,
   speechDebug,
   capabilities,
-  recorderError,
+  analysisError,
   cameraError,
 }) {
   return (
@@ -46,27 +54,41 @@ export function DeveloperDetails({
       <dl className="mt-4 grid gap-3" style={{ fontSize: scaleRem(0.75, fontSize) }}>
         <DetailRow label="Session" value={sessionId ?? '—'} colors={colors} fontSize={fontSize} />
         <DetailRow
-          label="Last sequence"
-          value={lastSequence >= 0 ? String(lastSequence) : '—'}
-          colors={colors}
-          fontSize={fontSize}
-        />
-        <DetailRow label="Upload status" value={uploadStatus} colors={colors} fontSize={fontSize} />
-        <DetailRow
-          label="Recorder MIME"
-          value={recorderMimeType ?? '—'}
-          colors={colors}
-          fontSize={fontSize}
-        />
-        <DetailRow
           label="Capturing"
           value={active ? 'yes' : 'no'}
           colors={colors}
           fontSize={fontSize}
         />
         <DetailRow
-          label="Warning stream"
+          label="Analysis loop"
           value={connectionStatus}
+          colors={colors}
+          fontSize={fontSize}
+        />
+        <DetailRow label="Analysis mode" value={analysisMode} colors={colors} fontSize={fontSize} />
+        <DetailRow
+          label="Frames analyzed"
+          value={String(analysisCount)}
+          colors={colors}
+          fontSize={fontSize}
+        />
+        <DetailRow
+          label="Last analyzed"
+          value={lastAnalyzedAt}
+          colors={colors}
+          fontSize={fontSize}
+        />
+        <DetailRow label="Latest danger" value={latestDanger} colors={colors} fontSize={fontSize} />
+        <DetailRow label="Latest alert" value={latestAlert} colors={colors} fontSize={fontSize} />
+        <DetailRow
+          label="Latest action"
+          value={latestAction}
+          colors={colors}
+          fontSize={fontSize}
+        />
+        <DetailRow
+          label="Safe path"
+          value={latestSafePath}
           colors={colors}
           fontSize={fontSize}
         />
@@ -79,6 +101,12 @@ export function DeveloperDetails({
         <DetailRow
           label="Audio playback"
           value={capabilities.audio ? 'yes' : 'no'}
+          colors={colors}
+          fontSize={fontSize}
+        />
+        <DetailRow
+          label="Speech support"
+          value={capabilities.speech ? 'yes' : 'no'}
           colors={colors}
           fontSize={fontSize}
         />
@@ -114,10 +142,10 @@ export function DeveloperDetails({
             fontSize={fontSize}
           />
         )}
-        {recorderError && (
+        {analysisError && (
           <DetailRow
-            label="Recorder error"
-            value={recorderError}
+            label="Analysis error"
+            value={analysisError}
             colors={colors}
             fontSize={fontSize}
           />
