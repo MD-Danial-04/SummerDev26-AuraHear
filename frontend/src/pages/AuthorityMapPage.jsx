@@ -19,11 +19,13 @@ export function AuthorityMapPage() {
   }
 
   return (
-    <div className="flex h-svh flex-col bg-gray-100">
+    <div className="flex h-full min-h-0 flex-1 flex-col bg-gray-100">
       <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3 sm:px-6">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">AuraHear — Hazard Map</h1>
-          <p className="text-sm text-gray-500">Singapore infrastructure hazard overview</p>
+          <p className="hidden text-sm text-gray-500 sm:block">
+            Singapore infrastructure hazard overview
+          </p>
         </div>
         <Link
           to="/"
@@ -34,9 +36,13 @@ export function AuthorityMapPage() {
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <aside
-          className="flex shrink-0 flex-col gap-4 overflow-y-auto border-b border-gray-200 bg-white p-4 lg:w-80 lg:border-b-0 lg:border-r"
-        >
+        <main className="relative order-1 min-h-[55svh] flex-1 lg:order-none lg:min-h-0">
+          <SingaporeMap flyToTarget={flyToTarget}>
+            <HazardMarkers hazards={hazards} selectedId={selectedId} />
+          </SingaporeMap>
+        </main>
+
+        <aside className="order-2 flex min-h-0 max-h-[35svh] flex-col gap-4 overflow-y-auto border-t border-gray-200 bg-white p-4 lg:order-none lg:max-h-none lg:w-80 lg:shrink-0 lg:border-r lg:border-t-0">
           <HazardLegend />
           <HazardSidebar
             hazards={hazards}
@@ -44,12 +50,6 @@ export function AuthorityMapPage() {
             onSelect={handleSelectHazard}
           />
         </aside>
-
-        <main className="relative min-h-0 flex-1">
-          <SingaporeMap flyToTarget={flyToTarget}>
-            <HazardMarkers hazards={hazards} selectedId={selectedId} />
-          </SingaporeMap>
-        </main>
       </div>
     </div>
   )
