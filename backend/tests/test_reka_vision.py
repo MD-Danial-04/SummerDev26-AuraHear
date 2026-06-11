@@ -85,6 +85,7 @@ class RekaVisionTests(unittest.TestCase):
         self.assertEqual(response.alert.danger_level, "medium")
         self.assertEqual(response.alert.spoken_alert, "Analysis unavailable. Stop and rescan.")
         self.assertIsNone(response.raw_model_text)
+        self.assertEqual(response.analysis_mode, "fallback")
 
     def test_video_analysis_repairs_non_json_response(self):
         settings = Settings()

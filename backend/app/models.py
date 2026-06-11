@@ -98,11 +98,15 @@ class VideoTimelineItem(BaseModel):
     detected_objects: list[str] = Field(default_factory=list)
 
 
+AnalysisMode = Literal["reka", "fallback"]
+
+
 class AnalyzeResponse(BaseModel):
     source_type: Literal["image", "video"]
     alert: HazardAlert
     timeline: list[VideoTimelineItem] = Field(default_factory=list)
     raw_model_text: str | None = None
+    analysis_mode: AnalysisMode = "reka"
 
 
 class SessionStartRequest(BaseModel):
