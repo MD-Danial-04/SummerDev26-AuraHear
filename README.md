@@ -86,3 +86,5 @@ curl -s -X POST https://YOUR-APP.vercel.app/api/session/start \
 Both should return JSON, not HTML or `{"detail":"Not Found"}`.
 
 Walking mode captures camera frames every ~1.8s and calls `POST /api/session/{id}/analyze/frame`. Without `REKA_API_KEY`, the backend returns a spoken fallback: *"Analysis unavailable. Stop and rescan."*
+
+**Serverless sessions:** Vercel runs each API request on a separate function instance with in-memory state. `POST /api/session/start` may land on a different instance than the next `analyze/frame`, which previously caused `404 Unknown session_id`. Frame analysis now **lazy-registers** the session on first use (using `context` and `alert_cooldown_seconds` sent with each frame). Alert cooldown still resets if requests hit different instances — acceptable for MVP; use Redis/KV for durable session state later.

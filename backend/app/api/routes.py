@@ -172,9 +172,15 @@ async def analyze_session_frame(
     session_id: str,
     frame: UploadFile = File(...),
     context: str | None = Form(default=None),
+    alert_cooldown_seconds: int | None = Form(default=None),
     settings: Settings = Depends(get_settings),
     service: RekaVisionService = Depends(get_reka_service),
 ):
+    session_store.ensure_session(
+        session_id,
+        context=context,
+        alert_cooldown_seconds=alert_cooldown_seconds or 8,
+    )
     _enforce_session_analysis_rate(session_id, settings)
     analysis_context = _merge_context(session_store.get_context(session_id), context)
     analysis = await service.analyze_upload_safely(frame, "image", analysis_context)
@@ -189,6 +195,7 @@ def analyze_session_frame_url(
     settings: Settings = Depends(get_settings),
     service: RekaVisionService = Depends(get_reka_service),
 ):
+    session_store.ensure_session(session_id, context=request.context)
     _enforce_session_analysis_rate(session_id, settings)
     analysis_context = _merge_context(
         session_store.get_context(session_id),
@@ -208,9 +215,15 @@ async def analyze_session_video(
     session_id: str,
     video: UploadFile = File(...),
     context: str | None = Form(default=None),
+    alert_cooldown_seconds: int | None = Form(default=None),
     settings: Settings = Depends(get_settings),
     service: RekaVisionService = Depends(get_reka_service),
 ):
+    session_store.ensure_session(
+        session_id,
+        context=context,
+        alert_cooldown_seconds=alert_cooldown_seconds or 8,
+    )
     _enforce_session_analysis_rate(session_id, settings)
     analysis_context = _merge_context(session_store.get_context(session_id), context)
     analysis = await service.analyze_upload_safely(video, "video", analysis_context)
@@ -225,6 +238,7 @@ def analyze_session_video_url(
     settings: Settings = Depends(get_settings),
     service: RekaVisionService = Depends(get_reka_service),
 ):
+    session_store.ensure_session(session_id, context=request.context)
     _enforce_session_analysis_rate(session_id, settings)
     analysis_context = _merge_context(
         session_store.get_context(session_id),

@@ -68,13 +68,14 @@ export async function startAnalysisSession({
 export async function analyzeSessionFrame(
   sessionId,
   frame,
-  { context, fileName = 'frame.jpg' } = {},
+  { context, fileName = 'frame.jpg', alertCooldownSeconds = 6 } = {},
 ) {
   const formData = new FormData()
   formData.append('frame', frame, fileName)
   if (context) {
     formData.append('context', context)
   }
+  formData.append('alert_cooldown_seconds', String(alertCooldownSeconds))
 
   const response = await fetch(sessionFrameAnalysisEndpoint(sessionId), {
     method: 'POST',
