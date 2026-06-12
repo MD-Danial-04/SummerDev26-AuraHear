@@ -43,7 +43,7 @@ API runs at http://localhost:8000.
 
 ## Health
 
-- `GET /api/health`: returns backend status, `ffmpeg_available`, and `ffprobe_available`
+- `GET /api/health`: returns backend status, `ffmpeg_available`, `ffprobe_available`, and `reka_configured`
 
 ## Navigation
 

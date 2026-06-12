@@ -140,7 +140,10 @@ class RekaVisionService:
             )
 
         if source_type == "video":
-            return self._analyze_video_bytes(contents, content_type, context)
+            if shutil.which("ffmpeg") and shutil.which("ffprobe"):
+                return self._analyze_video_bytes(contents, content_type, context)
+            media_url = _to_data_url(content_type, contents)
+            return self.analyze_media_url(media_url, source_type, context)
 
         media_url = _to_data_url(content_type, contents)
         return self.analyze_media_url(media_url, source_type, context)

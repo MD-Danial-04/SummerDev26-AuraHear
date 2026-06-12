@@ -44,11 +44,12 @@ def _normalize_video_content_type(content_type: str) -> str:
 
 
 @router.get("/health")
-def health():
+def health(settings: Settings = Depends(get_settings)):
     return {
         "status": "ok",
         "ffmpeg_available": shutil.which("ffmpeg") is not None,
         "ffprobe_available": shutil.which("ffprobe") is not None,
+        "reka_configured": bool(settings.reka_api_key),
     }
 
 

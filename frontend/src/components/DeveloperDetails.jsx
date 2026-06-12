@@ -26,6 +26,11 @@ import { scaleRem } from '../utils/scaleFont.js'
  *   capabilities: { audio: boolean, speech: boolean, vibration: boolean },
  *   analysisError: string | null,
  *   cameraError: string | null,
+ *   liveLocationStatus?: string,
+ *   liveLocationUpdatedAt?: string,
+ *   liveLocationAccuracy?: string,
+ *   liveLocationCoords?: string,
+ *   liveLocationError?: string | null,
  * }} props
  */
 export function DeveloperDetails({
@@ -46,11 +51,16 @@ export function DeveloperDetails({
   latestSafePath,
   shouldSpeak = '—',
   suppressedReason = '—',
+  liveLocationStatus = '—',
+  liveLocationUpdatedAt = '—',
+  liveLocationAccuracy = '—',
+  liveLocationCoords = '—',
   lastSpeechSource,
   speechDebug,
   capabilities,
   analysisError,
   cameraError,
+  liveLocationError = null,
 }) {
   return (
     <details className="mt-2">
@@ -123,6 +133,30 @@ export function DeveloperDetails({
           fontSize={fontSize}
         />
         <DetailRow
+          label="Location status"
+          value={liveLocationStatus}
+          colors={colors}
+          fontSize={fontSize}
+        />
+        <DetailRow
+          label="Location updated"
+          value={liveLocationUpdatedAt}
+          colors={colors}
+          fontSize={fontSize}
+        />
+        <DetailRow
+          label="Location accuracy"
+          value={liveLocationAccuracy}
+          colors={colors}
+          fontSize={fontSize}
+        />
+        <DetailRow
+          label="Coordinates"
+          value={liveLocationCoords}
+          colors={colors}
+          fontSize={fontSize}
+        />
+        <DetailRow
           label="Speech source"
           value={lastSpeechSource}
           colors={colors}
@@ -184,6 +218,14 @@ export function DeveloperDetails({
           <DetailRow
             label="Camera error"
             value={cameraError}
+            colors={colors}
+            fontSize={fontSize}
+          />
+        )}
+        {liveLocationError && (
+          <DetailRow
+            label="Location error"
+            value={liveLocationError}
             colors={colors}
             fontSize={fontSize}
           />

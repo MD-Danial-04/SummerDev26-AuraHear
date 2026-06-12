@@ -93,7 +93,7 @@ Video chunk analysis uses **ffmpeg/ffprobe** on the backend to sample frames bef
 curl -s https://YOUR-APP.vercel.app/api/health
 ```
 
-Expect `"ffmpeg_available": true` for chunk walking mode to work in production. Local dev needs ffmpeg installed. Vercel may not include ffmpeg by default — if health reports false, video analysis will fail until a static ffmpeg binary is bundled or runtime is upgraded.
+Expect `"ffmpeg_available": true` for chunk walking mode to work in production. Local dev needs ffmpeg installed. Vercel may not include ffmpeg by default — if health reports false, chunk mode still works by sending video directly to Reka (native video API); multi-frame ffmpeg sampling is used only when ffmpeg is available locally.
 
 **Serverless sessions:** Vercel runs each API request on a separate function instance with in-memory state. `POST /api/session/start` may land on a different instance than the next analyze call, which previously caused `404 Unknown session_id`. Chunk analyze now **lazy-registers** the session on first use (using `context` and `alert_cooldown_seconds` sent with each chunk). Alert cooldown still resets if requests hit different instances — acceptable for MVP; use Redis/KV for durable session state later.
 
