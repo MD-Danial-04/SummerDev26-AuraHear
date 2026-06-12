@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from fastapi import HTTPException
 
@@ -165,6 +166,40 @@ class RekaVisionTests(unittest.TestCase):
         self.assertEqual(response.alert.recommended_action, "Stop and wait for traffic.")
         self.assertEqual(response.timeline[1].timestamp_seconds, 6.0)
         self.assertIn("taxi", response.alert.hazards)
+
+    def test_video_analysis_uses_direct_reka_when_ffmpeg_missing(self):
+        settings = Settings()
+        service = RekaVisionService(settings)
+        service.client = _StubClient(
+            [
+                """
+                {
+                  "danger_level": "high",
+                  "confidence": 0.88,
+                  "summary": "Obstacle blocking the path ahead.",
+                  "spoken_alert": "Wall ahead. Stop.",
+                  "recommended_action": "Stop immediately.",
+                  "hazards": ["wall"],
+                  "safe_path": null,
+                  "detected_objects": ["wall"]
+                }
+                """
+            ]
+        )
+
+        with patch("app.services.reka_vision.shutil.which", return_value=None):
+            with patch.object(service, "_analyze_video_bytes") as mock_sampled:
+                response = service.analyze_bytes(
+                    b"video-bytes",
+                    "video/webm",
+                    "video",
+                )
+                mock_sampled.assert_not_called()
+
+        self.assertEqual(response.source_type, "video")
+        self.assertEqual(response.alert.danger_level, "high")
+        self.assertEqual(response.alert.spoken_alert, "Wall ahead. Stop.")
+        self.assertFalse(response.timeline)
 
 
 class _StubClient:
