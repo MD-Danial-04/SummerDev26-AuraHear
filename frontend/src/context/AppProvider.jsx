@@ -6,7 +6,7 @@ import { SettingsDrawer } from '../components/SettingsDrawer.jsx'
 import { useCameraStream } from '../hooks/useCameraStream.js'
 import { useColorTheme } from '../hooks/useColorTheme.js'
 import { useInteractionFeedback } from '../hooks/useInteractionFeedback.js'
-import { useLiveFrameAnalysis } from '../hooks/useLiveFrameAnalysis.js'
+import { useChunkVideoAnalysis } from '../hooks/useChunkVideoAnalysis.js'
 import { useVoiceCommands } from '../hooks/useVoiceCommands.js'
 import {
   isAudioPlaybackSupported,
@@ -94,7 +94,8 @@ function useAppState(videoRef) {
   const { theme, setTheme, colors } = useColorTheme('white-on-black')
   const feedback = useInteractionFeedback()
   const camera = useCameraStream(videoRef)
-  const frameAnalysis = useLiveFrameAnalysis(videoRef)
+  const getCameraStream = useCallback(() => camera.getStream(), [camera])
+  const chunkAnalysis = useChunkVideoAnalysis(getCameraStream)
   const cameraError = camera.error
 
   useEffect(() => {
@@ -148,7 +149,7 @@ function useAppState(videoRef) {
         alertCooldownSeconds: 6,
       })
       setSessionId(session.session_id)
-      frameAnalysis.start(session.session_id, LIVE_ANALYSIS_CONTEXT, {
+      chunkAnalysis.start(session.session_id, LIVE_ANALYSIS_CONTEXT, {
         alertCooldownSeconds: 6,
       })
       setActive(true)
@@ -160,17 +161,17 @@ function useAppState(videoRef) {
       showToast(message)
       return false
     }
-  }, [camera, frameAnalysis, showToast])
+  }, [camera, chunkAnalysis, showToast])
 
   const stopCapture = useCallback(() => {
-    frameAnalysis.stop()
+    chunkAnalysis.stop()
     camera.stop()
     stopCurrentAudio()
     cancelSpeech()
     setActive(false)
     setSessionId(null)
     setLastSpeechSource('idle')
-  }, [camera, frameAnalysis])
+  }, [camera, chunkAnalysis])
 
   const handleStart = useCallback(async () => {
     if (!active) {
@@ -275,7 +276,7 @@ function useAppState(videoRef) {
   }, [volume, speechRate, showToast])
 
   useEffect(() => {
-    const result = frameAnalysis.latestResult
+    const result = chunkAnalysis.latestResult
     if (!result) return
 
     const severity = toThreatSeverity(result.alert.danger_level)
@@ -305,12 +306,12 @@ function useAppState(videoRef) {
     })
 
     showToast(result.alert.recommended_action)
-  }, [frameAnalysis.latestResult, showToast, speechRate, volume])
+  }, [chunkAnalysis.latestResult, showToast, speechRate, volume])
 
   useEffect(() => {
-    if (!frameAnalysis.error) return
-    showToast(frameAnalysis.error)
-  }, [frameAnalysis.error, showToast])
+    if (!chunkAnalysis.error) return
+    showToast(chunkAnalysis.error)
+  }, [chunkAnalysis.error, showToast])
 
   useVoiceCommands(voiceEnabled, {
     onStart: () => void handleStart(),
@@ -393,14 +394,22 @@ function useAppState(videoRef) {
       colors,
       sessionId,
       active,
-      connectionStatus: frameAnalysis.status,
-      analysisMode: frameAnalysis.latestResult?.analysis_mode ?? '—',
-      analysisCount: frameAnalysis.analysisCount,
-      lastAnalyzedAt: frameAnalysis.lastAnalyzedAt ?? '—',
-      latestDanger: frameAnalysis.latestResult?.alert.danger_level ?? '—',
-      latestAlert: frameAnalysis.latestResult?.alert.spoken_alert ?? '—',
-      latestAction: frameAnalysis.latestResult?.alert.recommended_action ?? '—',
-      latestSafePath: frameAnalysis.latestResult?.alert.safe_path ?? '—',
+      captureMode: 'video_chunk',
+      connectionStatus: chunkAnalysis.status,
+      analysisMode: chunkAnalysis.latestResult?.analysis_mode ?? '—',
+      analysisCount: chunkAnalysis.analysisCount,
+      chunkCount: chunkAnalysis.chunkCount,
+      lastChunkBytes: chunkAnalysis.lastChunkBytes,
+      lastAnalyzedAt: chunkAnalysis.lastAnalyzedAt ?? '—',
+      latestDanger: chunkAnalysis.latestResult?.alert.danger_level ?? '—',
+      latestAlert: chunkAnalysis.latestResult?.alert.spoken_alert ?? '—',
+      latestAction: chunkAnalysis.latestResult?.alert.recommended_action ?? '—',
+      latestSafePath: chunkAnalysis.latestResult?.alert.safe_path ?? '—',
+      shouldSpeak:
+        chunkAnalysis.latestResult?.should_speak === undefined
+          ? '—'
+          : String(chunkAnalysis.latestResult.should_speak),
+      suppressedReason: chunkAnalysis.latestResult?.suppressed_reason ?? '—',
       lastSpeechSource,
       speechDebug,
       capabilities: {
@@ -408,11 +417,11 @@ function useAppState(videoRef) {
         speech: isSpeechSupported(),
         vibration: isVibrationSupported(),
       },
-      analysisError: frameAnalysis.error,
+      analysisError: chunkAnalysis.error,
       cameraError,
     },
-    analysisStatus: frameAnalysis.status,
-    analysisError: frameAnalysis.error,
+    analysisStatus: chunkAnalysis.status,
+    analysisError: chunkAnalysis.error,
   }
 }
 

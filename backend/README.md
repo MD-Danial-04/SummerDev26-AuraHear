@@ -43,7 +43,7 @@ API runs at http://localhost:8000.
 
 ## Health
 
-- `GET /api/health`: returns backend status
+- `GET /api/health`: returns backend status, `ffmpeg_available`, and `ffprobe_available`
 
 ## Navigation
 
@@ -94,7 +94,8 @@ Analysis responses include:
 Use sessions for repeated camera checks and alert cooldown.
 
 - `POST /api/session/start`: starts a walking session with optional `context` and `alert_cooldown_seconds`
-- `POST /api/session/{session_id}/analyze/frame`: analyzes a frame, stores the alert, and returns `should_speak`
+- `POST /api/session/{session_id}/analyze/chunk`: **walking mode** — uploads one video chunk and analyzes it in a single request (serverless-safe)
+- `POST /api/session/{session_id}/analyze/frame`: analyzes a still frame, stores the alert, and returns `should_speak`
 - `POST /api/session/{session_id}/analyze/video`: analyzes a short video, stores the alert, and returns `should_speak`
 - `POST /api/session/{session_id}/analyze/frame-url`: URL version of session frame analysis
 - `POST /api/session/{session_id}/analyze/video-url`: URL version of session video analysis
@@ -108,7 +109,7 @@ Session analysis is rate-limited before calling Reka to reduce cost and repeated
 
 - `POST /api/media/chunk`: accepts video chunks with `session_id`, `sequence`, `captured_at`, and `capture_mode=video_chunk`
 - `GET /api/media/session/{session_id}/chunks`: returns stored chunk count, contiguous chunk count, reconstructed byte count, and missing sequences
-- `POST /api/media/session/{session_id}/analyze`: reconstructs contiguous chunks for a session, analyzes the resulting video, stores the alert, and returns `should_speak`
+- `POST /api/media/session/{session_id}/analyze`: analyzes the **latest** stored chunk for a session, stores the alert, clears stored chunks, and returns `should_speak`
 
 Chunks are stored in memory by `session_id` and `sequence`. Reconstruction joins contiguous chunks in sequence order.
 

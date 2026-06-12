@@ -8,14 +8,19 @@ import { scaleRem } from '../utils/scaleFont.js'
  *   fontSize?: number,
  *   sessionId: string | null,
  *   active: boolean,
+ *   captureMode?: string,
  *   connectionStatus: string,
  *   analysisMode: string,
  *   analysisCount: number,
+ *   chunkCount?: number,
+ *   lastChunkBytes?: number,
  *   lastAnalyzedAt: string,
  *   latestDanger: string,
  *   latestAlert: string,
  *   latestAction: string,
  *   latestSafePath: string,
+ *   shouldSpeak?: string,
+ *   suppressedReason?: string,
  *   lastSpeechSource: string,
  *   speechDebug: { status: string, source: string, speechState: string, error: string | null },
  *   capabilities: { audio: boolean, speech: boolean, vibration: boolean },
@@ -28,14 +33,19 @@ export function DeveloperDetails({
   fontSize = 1,
   sessionId,
   active,
+  captureMode = '—',
   connectionStatus,
   analysisMode,
   analysisCount,
+  chunkCount = 0,
+  lastChunkBytes = 0,
   lastAnalyzedAt,
   latestDanger,
   latestAlert,
   latestAction,
   latestSafePath,
+  shouldSpeak = '—',
+  suppressedReason = '—',
   lastSpeechSource,
   speechDebug,
   capabilities,
@@ -59,6 +69,7 @@ export function DeveloperDetails({
           colors={colors}
           fontSize={fontSize}
         />
+        <DetailRow label="Capture mode" value={captureMode} colors={colors} fontSize={fontSize} />
         <DetailRow
           label="Analysis loop"
           value={connectionStatus}
@@ -67,7 +78,19 @@ export function DeveloperDetails({
         />
         <DetailRow label="Analysis mode" value={analysisMode} colors={colors} fontSize={fontSize} />
         <DetailRow
-          label="Frames analyzed"
+          label="Chunks recorded"
+          value={String(chunkCount)}
+          colors={colors}
+          fontSize={fontSize}
+        />
+        <DetailRow
+          label="Last chunk bytes"
+          value={lastChunkBytes > 0 ? String(lastChunkBytes) : '—'}
+          colors={colors}
+          fontSize={fontSize}
+        />
+        <DetailRow
+          label="Analyses completed"
           value={String(analysisCount)}
           colors={colors}
           fontSize={fontSize}
@@ -89,6 +112,13 @@ export function DeveloperDetails({
         <DetailRow
           label="Safe path"
           value={latestSafePath}
+          colors={colors}
+          fontSize={fontSize}
+        />
+        <DetailRow label="Should speak" value={shouldSpeak} colors={colors} fontSize={fontSize} />
+        <DetailRow
+          label="Suppressed reason"
+          value={suppressedReason}
           colors={colors}
           fontSize={fontSize}
         />
