@@ -32,6 +32,13 @@ function navInfoAriaLabel(step, dest) {
   return `On ${street}. ${step.instruction}. ${distance} Going to ${dest}.`
 }
 
+function formatDistance(distanceMeters) {
+  if (distanceMeters >= 1000) {
+    return `${(distanceMeters / 1000).toFixed(1)} km`
+  }
+  return `${Math.max(0, Math.round(distanceMeters))} m`
+}
+
 export function NavigationPage() {
   const navigate = useNavigate()
   const {
@@ -58,12 +65,8 @@ export function NavigationPage() {
   const [listening, setListening] = useState(false)
   const recognitionRef = useRef(null)
   const disambiguationRecognitionRef = useRef(null)
-  const navigationStatusRef = useRef(status)
+  const navigationStatusRef = useRef('idle')
   const inputRef = useRef(null)
-
-  useEffect(() => {
-    navigationStatusRef.current = status
-  }, [status])
 
   const speakInstruction = useCallback(
     async (text, onEnd) => {
@@ -96,6 +99,10 @@ export function NavigationPage() {
     cancelRoute,
     repeatCurrentStep,
   } = navigation
+
+  useEffect(() => {
+    navigationStatusRef.current = status
+  }, [status])
 
   useEffect(() => {
     registerNavSpeechResume(repeatCurrentStep)
@@ -160,12 +167,7 @@ export function NavigationPage() {
       rec.stop()
       disambiguationRecognitionRef.current = null
     }
-  }, [
-    confirmDestination,
-    nextCandidate,
-    selectCandidate,
-    status,
-  ])
+  }, [confirmDestination, nextCandidate, selectCandidate, status])
 
   const handleStartRoute = useCallback(
     (dest) => {
@@ -557,6 +559,26 @@ export function NavigationPage() {
       </div>
     )
 
+    const locationBanner = (
+      <div
+        className="mx-4 rounded-xl px-4 py-3 text-center"
+        style={{
+          backgroundColor: colors.surface,
+          border: `2px solid ${colors.border}`,
+          color: colors.text,
+          fontSize: scaleRem(0.95, fontSize),
+        }}
+      >
+        {liveLocation.status === 'tracking' || liveLocation.status === 'ready'
+          ? `GPS ready${liveLocation.coordinates?.accuracyMeters != null ? ` • accuracy ${Math.round(liveLocation.coordinates.accuracyMeters)} m` : ''}`
+          : liveLocation.status === 'requesting'
+            ? 'Requesting GPS location…'
+            : liveLocation.status === 'unsupported'
+              ? 'GPS is not supported on this device.'
+              : liveLocation.error || 'GPS permission is needed for navigation.'}
+      </div>
+    )
+
     const backButton = (
       <button
         type="button"
@@ -627,6 +649,7 @@ export function NavigationPage() {
         {layoutInverted ? (
           <>
             {bottomRow}
+            {locationBanner}
             {destinationBar}
             {cameraZone}
           </>
@@ -634,6 +657,7 @@ export function NavigationPage() {
           <>
             {cameraZone}
             {destinationBar}
+            {locationBanner}
             {bottomRow}
           </>
         )}
@@ -653,6 +677,31 @@ export function NavigationPage() {
       aria-live="assertive"
       aria-label={navInfoAriaLabel(currentStep, destinationLabel)}
     >
+      {route?.summary && (
+        <p
+          style={{
+            fontSize: scaleRem(0.95, fontSize),
+            fontWeight: 700,
+            color: colors.muted,
+            textAlign: 'center',
+          }}
+        >
+          {formatDistance(route.summary.distance_meters)} — {route.summary.estimated_minutes} min
+        </p>
+      )}
+      {(liveLocation.status === 'tracking' || liveLocation.status === 'ready') &&
+        liveLocation.coordinates && (
+          <p
+            style={{
+              fontSize: scaleRem(0.85, fontSize),
+              fontWeight: 600,
+              color: colors.muted,
+              textAlign: 'center',
+            }}
+          >
+            GPS {liveLocation.coordinates.lat.toFixed(5)}, {liveLocation.coordinates.lon.toFixed(5)}
+          </p>
+        )}
       <p
         style={{
           fontSize: scaleRem(1.3, fontSize),

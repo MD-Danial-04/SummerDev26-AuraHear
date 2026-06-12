@@ -1,3 +1,6 @@
+export const NAVIGATION_GEOCODE_ENDPOINT = '/api/navigation/geocode'
+export const NAVIGATION_ROUTE_ENDPOINT = '/api/navigation/route'
+
 /**
  * @param {string} detail
  * @returns {string}
@@ -22,13 +25,21 @@ async function throwNavigationError(response) {
 
 /**
  * @param {string} query
- * @param {number} [limit]
+ * @param {number | { limit?: number }} [limitOrOptions]
  * @returns {Promise<{ query: string, results: Array<{ name: string, lat: number, lon: number }> }>}
  */
-export async function geocodeLocation(query, limit = 5) {
-  const response = await fetch('/api/navigation/geocode', {
+export async function geocodeLocation(query, limitOrOptions = 5) {
+  const limit =
+    typeof limitOrOptions === 'object'
+      ? (limitOrOptions.limit ?? 5)
+      : limitOrOptions
+
+  const response = await fetch(NAVIGATION_GEOCODE_ENDPOINT, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
     body: JSON.stringify({ query, limit }),
   })
 
@@ -43,25 +54,9 @@ export async function geocodeLocation(query, limit = 5) {
  * @param {{
  *   origin: { lat: number, lon: number },
  *   destination: { lat: number, lon: number },
- *   originName?: string,
- *   destinationName?: string,
+ *   originName?: string | null,
+ *   destinationName?: string | null,
  * }} params
- * @returns {Promise<{
- *   origin: { lat: number, lon: number },
- *   destination: { lat: number, lon: number },
- *   origin_name?: string | null,
- *   destination_name?: string | null,
- *   summary: { distance_meters: number, duration_seconds: number, estimated_minutes: number },
- *   steps: Array<{
- *     instruction: string,
- *     spoken_instruction: string,
- *     distance_meters: number,
- *     duration_seconds: number,
- *     street_name?: string | null,
- *     location: { lat: number, lon: number },
- *   }>,
- *   path: Array<{ lat: number, lon: number }>,
- * }>}
  */
 export async function buildWalkingRoute({
   origin,
@@ -69,9 +64,12 @@ export async function buildWalkingRoute({
   originName,
   destinationName,
 }) {
-  const response = await fetch('/api/navigation/route', {
+  const response = await fetch(NAVIGATION_ROUTE_ENDPOINT, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
     body: JSON.stringify({
       origin,
       destination,
@@ -85,4 +83,14 @@ export async function buildWalkingRoute({
   }
 
   return response.json()
+}
+
+/** Alias used by earlier main-branch integrations. */
+export async function buildNavigationRoute(request) {
+  return buildWalkingRoute({
+    origin: request.origin,
+    destination: request.destination,
+    originName: request.originName ?? request.origin_name ?? null,
+    destinationName: request.destinationName ?? request.destination_name ?? null,
+  })
 }
