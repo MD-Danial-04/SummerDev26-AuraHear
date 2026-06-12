@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { analyzeSessionFrame } from '../api/sessionAnalysisClient.js'
 
-const FRAME_INTERVAL_MS = 1800
+const FRAME_INTERVAL_MS = 900
 const CAMERA_WAIT_RETRY_MS = 400
-const MAX_FRAME_WIDTH = 960
-const JPEG_QUALITY = 0.72
+const MAX_FRAME_WIDTH = 720
+const JPEG_QUALITY = 0.65
 
 /**
  * @param {HTMLVideoElement | null} video
