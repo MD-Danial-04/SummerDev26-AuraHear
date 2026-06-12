@@ -78,6 +78,25 @@ class SessionAndChunkTests(unittest.TestCase):
         self.assertEqual(contents, b"aa")
         self.assertEqual(content_type, "video/webm")
 
+    def test_reconstruct_latest_returns_highest_sequence_only(self):
+        store = MediaChunkStore()
+        store.add_chunk("session-1", 0, "2026-06-09T00:00:00Z", "video/webm", b"aa")
+        store.add_chunk("session-1", 2, "2026-06-09T00:00:02Z", "video/webm", b"cc")
+
+        contents, content_type = store.reconstruct_latest("session-1")
+
+        self.assertEqual(contents, b"cc")
+        self.assertEqual(content_type, "video/webm")
+
+    def test_clear_session_removes_stored_chunks(self):
+        store = MediaChunkStore()
+        store.add_chunk("session-1", 0, "2026-06-09T00:00:00Z", "video/webm", b"aa")
+
+        store.clear_session("session-1")
+
+        self.assertEqual(store.status("session-1").stored_chunks, 0)
+        self.assertEqual(store.reconstruct_latest("session-1"), (b"", ""))
+
 
 if __name__ == "__main__":
     unittest.main()

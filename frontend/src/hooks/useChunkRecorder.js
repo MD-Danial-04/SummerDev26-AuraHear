@@ -1,14 +1,10 @@
-import { useCallback, useRef, useState } from 'react'
-
-import { CHUNK_INTERVAL_MS } from '../api/uploadContract.js'
-
 const MIME_CANDIDATES = [
   'video/webm;codecs=vp8',
   'video/webm',
   'video/mp4',
 ]
 
-function pickRecorderMimeType() {
+export function pickRecorderMimeType() {
   if (typeof MediaRecorder === 'undefined') {
     return null
   }
@@ -20,58 +16,72 @@ function pickRecorderMimeType() {
   return ''
 }
 
-export function useChunkRecorder() {
-  const recorderRef = useRef(null)
-  const [mimeType, setMimeType] = useState(null)
-  const [error, setError] = useState(null)
+/**
+ * Record one standalone video chunk by stop/restart (valid for ffmpeg).
+ * @param {MediaStream} stream
+ * @param {number} durationMs
+ * @returns {Promise<{ blob: Blob, mimeType: string } | null>}
+ */
+export function recordChunk(stream, durationMs) {
+  if (typeof MediaRecorder === 'undefined') {
+    return Promise.resolve(null)
+  }
 
-  const start = useCallback((stream, onChunk) => {
-    setError(null)
+  const selectedMime = pickRecorderMimeType()
+  if (selectedMime === null) {
+    return Promise.resolve(null)
+  }
 
-    if (typeof MediaRecorder === 'undefined') {
-      setError('MediaRecorder is not supported in this browser.')
-      return false
-    }
+  return new Promise((resolve, reject) => {
+    const parts = []
+    const options = selectedMime ? { mimeType: selectedMime } : undefined
 
-    const selectedMime = pickRecorderMimeType()
-    if (selectedMime === null) {
-      setError('No supported video recording format found.')
-      return false
-    }
-
+    let recorder
     try {
-      const options = selectedMime ? { mimeType: selectedMime } : undefined
-      const recorder = new MediaRecorder(stream, options)
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          onChunk(event.data)
-        }
-      }
-
-      recorder.onerror = () => {
-        setError('Recording failed.')
-      }
-
-      recorder.start(CHUNK_INTERVAL_MS)
-      recorderRef.current = recorder
-      setMimeType(recorder.mimeType || selectedMime || 'unknown')
-      return true
+      recorder = new MediaRecorder(stream, options)
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to start recorder.'
-      setError(message)
-      return false
+      reject(err instanceof Error ? err : new Error('Failed to start recorder.'))
+      return
     }
-  }, [])
 
-  const stop = useCallback(() => {
-    const recorder = recorderRef.current
-    if (recorder && recorder.state !== 'inactive') {
-      recorder.stop()
+    const mimeType = recorder.mimeType || selectedMime || 'video/webm'
+    let timeoutId = null
+
+    const cleanup = () => {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+        timeoutId = null
+      }
     }
-    recorderRef.current = null
-  }, [])
 
-  return { start, stop, mimeType, error }
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        parts.push(event.data)
+      }
+    }
+
+    recorder.onstop = () => {
+      cleanup()
+      if (parts.length === 0) {
+        resolve(null)
+        return
+      }
+      resolve({
+        blob: new Blob(parts, { type: mimeType }),
+        mimeType,
+      })
+    }
+
+    recorder.onerror = () => {
+      cleanup()
+      reject(new Error('Recording failed.'))
+    }
+
+    recorder.start()
+    timeoutId = window.setTimeout(() => {
+      if (recorder.state !== 'inactive') {
+        recorder.stop()
+      }
+    }, durationMs)
+  })
 }
