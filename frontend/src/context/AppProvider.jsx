@@ -7,6 +7,7 @@ import { useCameraStream } from '../hooks/useCameraStream.js'
 import { useColorTheme } from '../hooks/useColorTheme.js'
 import { useInteractionFeedback } from '../hooks/useInteractionFeedback.js'
 import { useChunkVideoAnalysis } from '../hooks/useChunkVideoAnalysis.js'
+import { useLiveLocation } from '../hooks/useLiveLocation.js'
 import { useVoiceCommands } from '../hooks/useVoiceCommands.js'
 import {
   isAudioPlaybackSupported,
@@ -96,6 +97,7 @@ function useAppState(videoRef) {
   const camera = useCameraStream(videoRef)
   const getCameraStream = useCallback(() => camera.getStream(), [camera])
   const chunkAnalysis = useChunkVideoAnalysis(getCameraStream)
+  const liveLocation = useLiveLocation()
   const cameraError = camera.error
 
   useEffect(() => {
@@ -152,6 +154,7 @@ function useAppState(videoRef) {
       chunkAnalysis.start(session.session_id, LIVE_ANALYSIS_CONTEXT, {
         alertCooldownSeconds: 6,
       })
+      void liveLocation.requestLocation().catch(() => {})
       setActive(true)
       return true
     } catch (err) {
@@ -161,17 +164,18 @@ function useAppState(videoRef) {
       showToast(message)
       return false
     }
-  }, [camera, chunkAnalysis, showToast])
+  }, [camera, chunkAnalysis, liveLocation, showToast])
 
   const stopCapture = useCallback(() => {
     chunkAnalysis.stop()
+    liveLocation.stopTracking()
     camera.stop()
     stopCurrentAudio()
     cancelSpeech()
     setActive(false)
     setSessionId(null)
     setLastSpeechSource('idle')
-  }, [camera, chunkAnalysis])
+  }, [camera, chunkAnalysis, liveLocation])
 
   const handleStart = useCallback(async () => {
     if (!active) {
@@ -390,6 +394,7 @@ function useAppState(videoRef) {
     toastKey,
     speechTestError,
     handleTestSpeech,
+    liveLocation,
     developerDetails: {
       colors,
       sessionId,
@@ -410,6 +415,15 @@ function useAppState(videoRef) {
           ? '—'
           : String(chunkAnalysis.latestResult.should_speak),
       suppressedReason: chunkAnalysis.latestResult?.suppressed_reason ?? '—',
+      liveLocationStatus: liveLocation.status,
+      liveLocationUpdatedAt: liveLocation.updatedAt ?? '—',
+      liveLocationAccuracy:
+        liveLocation.coordinates?.accuracyMeters != null
+          ? `${Math.round(liveLocation.coordinates.accuracyMeters)} m`
+          : '—',
+      liveLocationCoords: liveLocation.coordinates
+        ? `${liveLocation.coordinates.lat.toFixed(6)}, ${liveLocation.coordinates.lon.toFixed(6)}`
+        : '—',
       lastSpeechSource,
       speechDebug,
       capabilities: {
@@ -419,6 +433,7 @@ function useAppState(videoRef) {
       },
       analysisError: chunkAnalysis.error,
       cameraError,
+      liveLocationError: liveLocation.error,
     },
     analysisStatus: chunkAnalysis.status,
     analysisError: chunkAnalysis.error,

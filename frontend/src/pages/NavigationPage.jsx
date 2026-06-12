@@ -10,54 +10,48 @@ import {
   X,
 } from 'lucide-react'
 
+import {
+  buildNavigationRoute,
+  geocodeLocation,
+} from '../api/navigationClient.js'
 import { CameraView } from '../components/CameraView.jsx'
 import { useApp } from '../context/AppContext.js'
 import { stopCurrentAudio } from '../utils/audioAlert.js'
 import { iconStyle, scaleRem, scaleSize } from '../utils/scaleFont.js'
 import { speakWarningAsync } from '../utils/speechAlert.js'
 
-const SIMULATED_STEPS = [
-  {
-    currentStreet: 'Main Street',
-    nextInstruction: 'Turn right onto Oak Avenue',
-    distance: '80 m',
-  },
-  {
-    currentStreet: 'Oak Avenue',
-    nextInstruction: 'Continue straight past the park',
-    distance: '200 m',
-  },
-  {
-    currentStreet: 'Oak Avenue',
-    nextInstruction: 'Turn left onto Elm Street',
-    distance: '120 m',
-  },
-  {
-    currentStreet: 'Elm Street',
-    nextInstruction: 'Continue 50 metres to destination',
-    distance: '50 m',
-  },
-  {
-    currentStreet: 'Elm Street',
-    nextInstruction: 'You have arrived at your destination',
-    distance: '0 m',
-  },
-]
-
-/** @param {typeof SIMULATED_STEPS[number]} step */
 function stepSpeechText(step) {
-  if (step.distance === '0 m') {
-    return step.nextInstruction
-  }
-  return `${step.nextInstruction}. In ${step.distance}.`
+  return step.spokenInstruction || step.nextInstruction
 }
 
-/** @param {typeof SIMULATED_STEPS[number]} step */
-function navInfoAriaLabel(step, dest) {
-  if (step.distance === '0 m') {
-    return `On ${step.currentStreet}. ${step.nextInstruction}. Going to ${dest}.`
+function navInfoAriaLabel(step, destinationName) {
+  if (!step) {
+    return `Navigation to ${destinationName}`
   }
-  return `On ${step.currentStreet}. ${step.nextInstruction}. In ${step.distance}. Going to ${dest}.`
+
+  if (!step.distanceLabel || step.distanceLabel === '0 m') {
+    return `On ${step.currentStreet}. ${step.nextInstruction}. Going to ${destinationName}.`
+  }
+
+  return `On ${step.currentStreet}. ${step.nextInstruction}. In ${step.distanceLabel}. Going to ${destinationName}.`
+}
+
+function formatDistance(distanceMeters) {
+  if (distanceMeters >= 1000) {
+    return `${(distanceMeters / 1000).toFixed(1)} km`
+  }
+
+  return `${Math.max(0, Math.round(distanceMeters))} m`
+}
+
+function routeStepFromApi(step, index, steps) {
+  const previousStreet = index > 0 ? steps[index - 1]?.street_name : null
+  return {
+    currentStreet: step.street_name || previousStreet || 'Walking route',
+    nextInstruction: step.instruction,
+    spokenInstruction: step.spoken_instruction || step.instruction,
+    distanceLabel: formatDistance(step.distance_meters ?? 0),
+  }
 }
 
 export function NavigationPage() {
@@ -74,6 +68,7 @@ export function NavigationPage() {
     layoutInverted,
     colors,
     feedback,
+    liveLocation,
     setSettingsOpen,
     showToast,
   } = useApp()
@@ -82,9 +77,15 @@ export function NavigationPage() {
   const [activeRoute, setActiveRoute] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
   const [listening, setListening] = useState(false)
+  const [routeSteps, setRouteSteps] = useState([])
+  const [routeSummary, setRouteSummary] = useState(null)
+  const [routeDestinationName, setRouteDestinationName] = useState('')
+  const [routeLoading, setRouteLoading] = useState(false)
+  const [routeError, setRouteError] = useState(null)
   const recognitionRef = useRef(null)
   const inputRef = useRef(null)
   const routeActiveRef = useRef(false)
+  const routeStepsRef = useRef([])
 
   const speakInstruction = useCallback(
     async (text, onEnd) => {
@@ -97,44 +98,104 @@ export function NavigationPage() {
   const speakStepAndAdvance = useCallback(
     (stepIndex) => {
       if (!routeActiveRef.current) return
-      const s = SIMULATED_STEPS[stepIndex]
-      if (!s) return
 
-      showToast(s.nextInstruction)
-      void speakInstruction(stepSpeechText(s), () => {
+      const step = routeStepsRef.current[stepIndex]
+      if (!step) return
+
+      showToast(step.nextInstruction)
+      void speakInstruction(stepSpeechText(step), () => {
         if (!routeActiveRef.current) return
-        if (s.distance === '0 m') return
+        if (step.distanceLabel === '0 m') return
 
         const nextIndex = stepIndex + 1
-        if (nextIndex < SIMULATED_STEPS.length) {
+        if (nextIndex < routeStepsRef.current.length) {
           setCurrentStep(nextIndex)
           speakStepAndAdvance(nextIndex)
         }
       })
     },
-    [speakInstruction, showToast],
+    [showToast, speakInstruction],
   )
 
   const handleStartRoute = useCallback(
-    (dest) => {
-      if (!dest.trim()) return
+    async (requestedDestination) => {
+      const trimmedDestination = requestedDestination.trim()
+      if (!trimmedDestination || routeLoading) return
+
       feedback.togglePress(true)
-      routeActiveRef.current = true
-      setActiveRoute(true)
-      setCurrentStep(0)
-      showToast(`Navigating to ${dest}`)
-      speakStepAndAdvance(0)
+      setRouteLoading(true)
+      setRouteError(null)
+      showToast('Finding route...')
+
+      try {
+        const origin =
+          liveLocation.coordinates ??
+          (await liveLocation.requestLocation({
+            keepUpdated: true,
+          }))
+        const geocode = await geocodeLocation(trimmedDestination, { limit: 1 })
+        const destinationResult = geocode.results?.[0]
+        if (!destinationResult) {
+          throw new Error('No matching destination was found.')
+        }
+
+        const route = await buildNavigationRoute({
+          origin,
+          destination: {
+            lat: destinationResult.lat,
+            lon: destinationResult.lon,
+          },
+          originName: 'Current location',
+          destinationName: destinationResult.name,
+        })
+
+        const steps = (route.steps ?? []).map(routeStepFromApi)
+        if (steps.length === 0) {
+          throw new Error('No route steps were returned for this destination.')
+        }
+
+        routeStepsRef.current = steps
+        setRouteSteps(steps)
+        setRouteSummary(route.summary ?? null)
+        setRouteDestinationName(route.destination_name || destinationResult.name)
+        setDestination(destinationResult.name)
+        setCurrentStep(0)
+        setRouteError(null)
+        routeActiveRef.current = true
+        setActiveRoute(true)
+        showToast(`Navigating to ${destinationResult.name}`)
+        speakStepAndAdvance(0)
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unable to build a walking route.'
+        routeActiveRef.current = false
+        routeStepsRef.current = []
+        setRouteSteps([])
+        setRouteSummary(null)
+        setRouteDestinationName('')
+        setActiveRoute(false)
+        setCurrentStep(0)
+        setRouteError(message)
+        showToast(message)
+      } finally {
+        setRouteLoading(false)
+      }
     },
-    [feedback, showToast, speakStepAndAdvance],
+    [feedback, liveLocation, routeLoading, showToast, speakStepAndAdvance],
   )
 
   const handleCancelRoute = useCallback(() => {
     feedback.buttonPress()
     routeActiveRef.current = false
+    routeStepsRef.current = []
     stopCurrentAudio()
     setActiveRoute(false)
     setDestination('')
     setCurrentStep(0)
+    setRouteSteps([])
+    setRouteSummary(null)
+    setRouteDestinationName('')
+    setRouteError(null)
     showToast('Route cancelled')
   }, [feedback, showToast])
 
@@ -145,6 +206,7 @@ export function NavigationPage() {
       showToast('Voice not supported on this device')
       return
     }
+
     feedback.togglePress(true)
     const rec = new SpeechRecognitionAPI()
     rec.continuous = false
@@ -155,16 +217,16 @@ export function NavigationPage() {
       void speakInstruction('Listening for destination')
     }
     rec.onresult = (e) => {
-      const t = e.results[0][0].transcript
-      setDestination(t)
+      const transcript = e.results[0][0].transcript
+      setDestination(transcript)
       if (e.results[0].isFinal) {
         setListening(false)
-        void speakInstruction(`Destination set to ${t}`)
+        void speakInstruction(`Destination set to ${transcript}`)
       }
     }
     rec.onerror = () => {
       setListening(false)
-      showToast("Couldn't hear you — try again")
+      showToast("Couldn't hear you - try again")
     }
     rec.onend = () => setListening(false)
     rec.start()
@@ -178,8 +240,16 @@ export function NavigationPage() {
 
   useEffect(() => () => recognitionRef.current?.stop(), [])
 
-  const canGo = destination.trim().length > 0
-  const step = activeRoute ? SIMULATED_STEPS[currentStep] : null
+  useEffect(() => {
+    void liveLocation.requestLocation({
+      keepUpdated: true,
+      timeout: 12000,
+      maximumAge: 10000,
+    }).catch(() => {})
+  }, [liveLocation])
+
+  const canGo = destination.trim().length > 0 && !routeLoading
+  const step = activeRoute ? routeSteps[currentStep] : null
 
   const sliderThumb = scaleSize(2.5, fontSize)
   const sliderTrack = scaleSize(0.75, fontSize)
@@ -206,7 +276,7 @@ export function NavigationPage() {
             letterSpacing: '0.04em',
           }}
         >
-          VOLUME — {Math.round(volume * 100)}%
+          VOLUME - {Math.round(volume * 100)}%
         </span>
         <Volume2 style={iconStyle(2, fontSize, { color: colors.accent })} />
       </div>
@@ -300,7 +370,6 @@ export function NavigationPage() {
     />
   )
 
-  // ── Destination screen ─────────────────────────────────────────────────────
   if (!activeRoute) {
     const destinationBar = (
       <div
@@ -342,9 +411,11 @@ export function NavigationPage() {
           value={destination}
           onChange={(e) => setDestination(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && canGo) handleStartRoute(destination)
+            if (e.key === 'Enter' && canGo) {
+              void handleStartRoute(destination)
+            }
           }}
-          placeholder={listening ? 'Listening…' : 'Destination…'}
+          placeholder={listening ? 'Listening...' : 'Destination...'}
           className="flex-1 min-w-0 outline-none"
           style={{
             padding: `0 ${scaleSize(1, fontSize)}`,
@@ -360,7 +431,7 @@ export function NavigationPage() {
 
         <button
           type="button"
-          onClick={() => handleStartRoute(destination)}
+          onClick={() => void handleStartRoute(destination)}
           disabled={!canGo}
           className="flex items-center justify-center active:opacity-80 flex-shrink-0"
           style={{
@@ -380,72 +451,99 @@ export function NavigationPage() {
               : 'Start navigation (enter a destination first)'
           }
         >
-          GO
+          {routeLoading ? '...' : 'GO'}
         </button>
       </div>
     )
 
-    const backButton = (
-      <button
-        type="button"
-        onClick={() => {
-          feedback.buttonPress()
-          navigate('/')
-        }}
-        className="flex-1 flex flex-col items-center justify-center gap-3 active:opacity-80 transition-opacity"
+    const routeErrorBanner = routeError ? (
+      <div
+        className="mx-4 rounded-xl px-4 py-3 text-center"
         style={{
           backgroundColor: colors.surface,
+          border: `2px solid ${colors.border}`,
           color: colors.text,
-          borderTop: `2px solid ${colors.border}`,
+          fontSize: scaleRem(0.95, fontSize),
         }}
-        aria-label="Back to walking mode"
       >
-        <ArrowLeft style={iconStyle(3, fontSize)} />
-        <span
-          style={{
-            fontSize: scaleRem(1.3, fontSize),
-            fontWeight: 800,
-            letterSpacing: '0.05em',
-          }}
-        >
-          BACK
-        </span>
-      </button>
-    )
+        {routeError}
+      </div>
+    ) : null
 
-    const settingsButton = (
-      <button
-        type="button"
-        onClick={() => {
-          feedback.buttonPress()
-          setSettingsOpen(true)
-        }}
-        className="flex-1 flex flex-col items-center justify-center gap-3 active:opacity-80 transition-opacity"
+    const locationBanner = (
+      <div
+        className="mx-4 rounded-xl px-4 py-3 text-center"
         style={{
           backgroundColor: colors.surface,
+          border: `2px solid ${colors.border}`,
           color: colors.text,
-          borderTop: `2px solid ${colors.border}`,
-          borderLeft: `2px solid ${colors.border}`,
+          fontSize: scaleRem(0.95, fontSize),
         }}
-        aria-label="Open settings"
       >
-        <Settings style={iconStyle(3, fontSize)} />
-        <span
-          style={{
-            fontSize: scaleRem(1.3, fontSize),
-            fontWeight: 800,
-            letterSpacing: '0.05em',
-          }}
-        >
-          SETTINGS
-        </span>
-      </button>
+        {liveLocation.status === 'tracking' || liveLocation.status === 'ready'
+          ? `GPS ready${liveLocation.coordinates?.accuracyMeters != null ? ` • accuracy ${Math.round(liveLocation.coordinates.accuracyMeters)} m` : ''}`
+          : liveLocation.status === 'requesting'
+            ? 'Requesting GPS location...'
+            : liveLocation.status === 'unsupported'
+              ? 'GPS is not supported on this device.'
+              : liveLocation.error || 'GPS permission is needed for navigation.'}
+      </div>
     )
 
     const bottomRow = (
       <div className="flex">
-        {backButton}
-        {settingsButton}
+        <button
+          type="button"
+          onClick={() => {
+            feedback.buttonPress()
+            navigate('/')
+          }}
+          className="flex-1 flex flex-col items-center justify-center gap-3 active:opacity-80 transition-opacity"
+          style={{
+            backgroundColor: colors.surface,
+            color: colors.text,
+            borderTop: `2px solid ${colors.border}`,
+          }}
+          aria-label="Back to walking mode"
+        >
+          <ArrowLeft style={iconStyle(3, fontSize)} />
+          <span
+            style={{
+              fontSize: scaleRem(1.3, fontSize),
+              fontWeight: 800,
+              letterSpacing: '0.05em',
+            }}
+          >
+            BACK
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            feedback.buttonPress()
+            setSettingsOpen(true)
+          }}
+          className="flex-1 flex flex-col items-center justify-center gap-3 active:opacity-80 transition-opacity"
+          style={{
+            backgroundColor: colors.surface,
+            color: colors.text,
+            borderTop: `2px solid ${colors.border}`,
+            borderLeft: `2px solid ${colors.border}`,
+          }}
+          aria-label="Open settings"
+        >
+          <Settings style={iconStyle(3, fontSize)} />
+          <span
+            style={{
+              fontSize: scaleRem(1.3, fontSize),
+              fontWeight: 800,
+              letterSpacing: '0.05em',
+            }}
+          >
+            SETTINGS
+          </span>
+        </button>
       </div>
     )
 
@@ -453,6 +551,8 @@ export function NavigationPage() {
       <>
         {cameraZone}
         {destinationBar}
+        {locationBanner}
+        {routeErrorBanner}
         {bottomRow}
       </>
     )
@@ -460,6 +560,8 @@ export function NavigationPage() {
     const invertedStack = (
       <>
         {bottomRow}
+        {routeErrorBanner}
+        {locationBanner}
         {destinationBar}
         {cameraZone}
       </>
@@ -472,7 +574,6 @@ export function NavigationPage() {
     )
   }
 
-  // ── Active route screen ────────────────────────────────────────────────────
   const navInfoZone = (
     <div
       className="flex flex-col items-center justify-center px-6"
@@ -483,8 +584,33 @@ export function NavigationPage() {
         borderBottom: `2px solid ${colors.border}`,
       }}
       aria-live="assertive"
-      aria-label={navInfoAriaLabel(step, destination)}
+      aria-label={navInfoAriaLabel(step, routeDestinationName || destination)}
     >
+      {routeSummary && (
+        <p
+          style={{
+            fontSize: scaleRem(0.95, fontSize),
+            fontWeight: 700,
+            color: colors.muted,
+            textAlign: 'center',
+          }}
+        >
+          {formatDistance(routeSummary.distance_meters)} - {routeSummary.estimated_minutes} min
+        </p>
+      )}
+      {(liveLocation.status === 'tracking' || liveLocation.status === 'ready') &&
+        liveLocation.coordinates && (
+          <p
+            style={{
+              fontSize: scaleRem(0.85, fontSize),
+              fontWeight: 600,
+              color: colors.muted,
+              textAlign: 'center',
+            }}
+          >
+            GPS {liveLocation.coordinates.lat.toFixed(5)}, {liveLocation.coordinates.lon.toFixed(5)}
+          </p>
+        )}
       <p
         style={{
           fontSize: scaleRem(1.3, fontSize),
@@ -493,7 +619,7 @@ export function NavigationPage() {
           textAlign: 'center',
         }}
       >
-        {step.currentStreet}
+        {step?.currentStreet}
       </p>
       <p
         style={{
@@ -504,9 +630,9 @@ export function NavigationPage() {
           lineHeight: 1.15,
         }}
       >
-        {step.nextInstruction}
+        {step?.nextInstruction}
       </p>
-      {step.distance !== '0 m' && (
+      {step?.distanceLabel !== '0 m' && (
         <p
           style={{
             fontSize: scaleRem(1.1, fontSize),
@@ -515,7 +641,7 @@ export function NavigationPage() {
             textAlign: 'center',
           }}
         >
-          {step.distance}
+          {step?.distanceLabel}
         </p>
       )}
       <p
@@ -525,7 +651,7 @@ export function NavigationPage() {
           textAlign: 'center',
         }}
       >
-        → {destination}
+        Step {currentStep + 1} of {routeSteps.length} to {routeDestinationName || destination}
       </p>
     </div>
   )
