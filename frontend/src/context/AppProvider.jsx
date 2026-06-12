@@ -99,6 +99,7 @@ function useAppState(videoRef) {
   const chunkAnalysis = useChunkVideoAnalysis(getCameraStream)
   const liveLocation = useLiveLocation()
   const navSpeechResumeRef = useRef(null)
+  const navHazardRerouteRef = useRef(null)
   const cameraError = camera.error
 
   useEffect(() => {
@@ -206,6 +207,14 @@ function useAppState(videoRef) {
 
   const unregisterNavSpeechResume = useCallback(() => {
     navSpeechResumeRef.current = null
+  }, [])
+
+  const registerNavHazardReroute = useCallback((callback) => {
+    navHazardRerouteRef.current = callback
+  }, [])
+
+  const unregisterNavHazardReroute = useCallback(() => {
+    navHazardRerouteRef.current = null
   }, [])
 
   const handleStart = useCallback(async () => {
@@ -338,6 +347,7 @@ function useAppState(videoRef) {
       rate: speechRate,
     }).then((speechResult) => {
       setLastSpeechSource(speechResult.ok ? 'system-tts' : 'idle')
+      navHazardRerouteRef.current?.(result)
       navSpeechResumeRef.current?.()
     })
 
@@ -430,6 +440,8 @@ function useAppState(videoRef) {
     ensureCaptureForNavigation,
     registerNavSpeechResume,
     unregisterNavSpeechResume,
+    registerNavHazardReroute,
+    unregisterNavHazardReroute,
     developerDetails: {
       colors,
       sessionId,

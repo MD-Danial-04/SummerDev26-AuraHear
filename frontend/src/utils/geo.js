@@ -114,3 +114,4 @@ export const NAV_OFF_ROUTE_METERS = 35
 export const NAV_OFF_ROUTE_SECONDS = 8
 export const NAV_REROUTE_DEBOUNCE_MS = 30000
 export const NAV_ARRIVAL_METERS = 15
+export const NAV_GPS_STALE_MS = 30000

@@ -6,6 +6,7 @@ import {
   findNearestStepIndex,
   haversineMeters,
   NAV_ARRIVAL_METERS,
+  NAV_GPS_STALE_MS,
   NAV_OFF_ROUTE_METERS,
   NAV_OFF_ROUTE_SECONDS,
   NAV_REROUTE_DEBOUNCE_MS,
@@ -13,10 +14,21 @@ import {
 } from '../utils/geo.js'
 
 /**
+ * @param {{ should_speak?: boolean, alert?: { danger_level?: string } }} result
+ * @returns {boolean}
+ */
+function shouldHazardReroute(result) {
+  if (!result?.should_speak) return false
+  const level = result.alert?.danger_level
+  return level === 'medium' || level === 'high' || level === 'critical'
+}
+
+/**
  * @param {{
  *   liveLocation: {
  *     coordinates: { lat: number, lon: number } | null,
  *     status: string,
+ *     updatedAt?: string | null,
  *     requestLocation: (options?: object) => Promise<{ lat: number, lon: number }>,
  *   },
  *   speak: (text: string, onEnd?: () => void) => Promise<void>,
@@ -44,8 +56,9 @@ export function useWalkingNavigation({
   const rerouteInFlightRef = useRef(false)
   const routeRef = useRef(null)
   const currentStepIndexRef = useRef(0)
-  const speakStepRef = useRef(null)
   const arrivedSpokenRef = useRef(false)
+  const lastSpokenStepIndexRef = useRef(-1)
+  const lastStalePromptAtRef = useRef(0)
 
   useEffect(() => {
     routeRef.current = route
@@ -73,32 +86,17 @@ export function useWalkingNavigation({
   )
 
   const speakStepAt = useCallback(
-    (routeData, stepIndex) => {
+    (routeData, stepIndex, { force = false } = {}) => {
       const step = routeData?.steps?.[stepIndex]
       if (!step || !routeActiveRef.current) return
 
-      void speak(step.spoken_instruction, () => {
-        if (!routeActiveRef.current) return
-        if (currentStepIndexRef.current !== stepIndex) return
+      if (!force && lastSpokenStepIndexRef.current === stepIndex) return
 
-        const nextIndex = stepIndex + 1
-        if (nextIndex >= routeData.steps.length) {
-          routeActiveRef.current = false
-          setStatus('arrived')
-          void speak('You have arrived at your destination.')
-          return
-        }
-
-        setCurrentStepIndex(nextIndex)
-        speakStepRef.current?.(routeData, nextIndex)
-      })
+      lastSpokenStepIndexRef.current = stepIndex
+      void speak(step.spoken_instruction)
     },
     [speak],
   )
-
-  useEffect(() => {
-    speakStepRef.current = speakStepAt
-  }, [speakStepAt])
 
   const beginNavigation = useCallback(
     (routeData) => {
@@ -107,6 +105,8 @@ export function useWalkingNavigation({
       routeActiveRef.current = true
       offRouteSinceRef.current = null
       arrivedSpokenRef.current = false
+      lastSpokenStepIndexRef.current = -1
+      lastStalePromptAtRef.current = 0
       setStatus('navigating')
       speakStepAt(routeData, 0)
     },
@@ -161,10 +161,10 @@ export function useWalkingNavigation({
   )
 
   const triggerReroute = useCallback(
-    async (position) => {
+    async (position, { speakStepAfter = true } = {}) => {
       const destination = destinationRef.current
-      if (!destination || rerouteInFlightRef.current) return
-      if (Date.now() - lastRerouteAtRef.current < NAV_REROUTE_DEBOUNCE_MS) return
+      if (!destination || rerouteInFlightRef.current) return false
+      if (Date.now() - lastRerouteAtRef.current < NAV_REROUTE_DEBOUNCE_MS) return false
 
       rerouteInFlightRef.current = true
       lastRerouteAtRef.current = Date.now()
@@ -176,17 +176,32 @@ export function useWalkingNavigation({
         const nearestStep = findNearestStepIndex(position, routeData.steps)
         setRoute(routeData)
         setCurrentStepIndex(nearestStep)
+        lastSpokenStepIndexRef.current = -1
         await speak('Route updated.')
-        speakStepAt(routeData, nearestStep)
+        if (speakStepAfter) {
+          speakStepAt(routeData, nearestStep)
+        }
+        return true
       } catch (err) {
         const message =
           err instanceof Error ? err.message : 'Could not update route.'
         await speak(message)
+        return false
       } finally {
         rerouteInFlightRef.current = false
       }
     },
     [fetchRoute, speak, speakStepAt],
+  )
+
+  const handleHazardDuringNav = useCallback(
+    (result) => {
+      if (!routeActiveRef.current || !shouldHazardReroute(result)) return
+      const position = liveLocation.coordinates
+      if (!position) return
+      void triggerReroute(position, { speakStepAfter: false })
+    },
+    [liveLocation.coordinates, triggerReroute],
   )
 
   const startRoute = useCallback(
@@ -291,6 +306,8 @@ export function useWalkingNavigation({
     rerouteInFlightRef.current = false
     destinationRef.current = null
     arrivedSpokenRef.current = false
+    lastSpokenStepIndexRef.current = -1
+    lastStalePromptAtRef.current = 0
     setStatus('idle')
     setError(null)
     setCandidates([])
@@ -304,7 +321,7 @@ export function useWalkingNavigation({
   const repeatCurrentStep = useCallback(() => {
     const routeData = routeRef.current
     if (!routeData || !routeActiveRef.current) return
-    speakStepAt(routeData, currentStepIndexRef.current)
+    speakStepAt(routeData, currentStepIndexRef.current, { force: true })
   }, [speakStepAt])
 
   useEffect(() => {
@@ -323,11 +340,10 @@ export function useWalkingNavigation({
       return
     }
 
-    const nextIndex = currentStepIndex + 1
+    const nextIndex = currentStepIndexRef.current + 1
     if (
       nextIndex < steps.length &&
-      haversineMeters(position, steps[nextIndex].location) <= NAV_STEP_ADVANCE_METERS &&
-      currentStepIndexRef.current === currentStepIndex
+      haversineMeters(position, steps[nextIndex].location) <= NAV_STEP_ADVANCE_METERS
     ) {
       setCurrentStepIndex(nextIndex)
       speakStepAt(route, nextIndex)
@@ -341,20 +357,35 @@ export function useWalkingNavigation({
         Date.now() - offRouteSinceRef.current >=
         NAV_OFF_ROUTE_SECONDS * 1000
       ) {
-        void triggerReroute(position)
+        void triggerReroute(position, { speakStepAfter: true })
       }
     } else {
       offRouteSinceRef.current = null
     }
-  }, [
-    currentStepIndex,
-    liveLocation.coordinates,
-    route,
-    speak,
-    speakStepAt,
-    status,
-    triggerReroute,
-  ])
+  }, [liveLocation.coordinates, route, speak, speakStepAt, status, triggerReroute])
+
+  useEffect(() => {
+    if (status !== 'navigating' || !routeActiveRef.current) return
+
+    const checkStaleGps = () => {
+      if (!routeActiveRef.current) return
+
+      const updatedAt = liveLocation.updatedAt
+      if (!updatedAt) return
+
+      const staleMs = Date.now() - new Date(updatedAt).getTime()
+      if (staleMs <= NAV_GPS_STALE_MS) return
+      if (Date.now() - lastStalePromptAtRef.current < NAV_GPS_STALE_MS) return
+
+      lastStalePromptAtRef.current = Date.now()
+      const routeData = routeRef.current
+      if (!routeData) return
+      speakStepAt(routeData, currentStepIndexRef.current, { force: true })
+    }
+
+    const timer = window.setInterval(checkStaleGps, 5000)
+    return () => window.clearInterval(timer)
+  }, [liveLocation.updatedAt, speakStepAt, status])
 
   const currentStep = route?.steps?.[currentStepIndex] ?? null
   const isActiveRoute = status === 'navigating' || status === 'arrived'
@@ -376,5 +407,6 @@ export function useWalkingNavigation({
     nextCandidate,
     cancelRoute,
     repeatCurrentStep,
+    handleHazardDuringNav,
   }
 }
