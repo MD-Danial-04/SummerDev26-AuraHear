@@ -4,6 +4,19 @@ from pydantic import BaseModel, Field
 
 
 DangerLevel = Literal["none", "low", "medium", "high", "critical"]
+DirectionHint = Literal[
+    "left",
+    "center_left",
+    "center",
+    "center_right",
+    "right",
+    "upper_left",
+    "upper_right",
+    "lower_left",
+    "lower_right",
+    "unknown",
+]
+ProximityHint = Literal["immediate", "near", "ahead", "clear", "unknown"]
 
 
 class MediaUrlRequest(BaseModel):
@@ -81,6 +94,8 @@ class HazardAlert(BaseModel):
     summary: str
     spoken_alert: str
     recommended_action: str
+    direction_hint: DirectionHint = "unknown"
+    proximity_hint: ProximityHint = "unknown"
     hazards: list[str] = Field(default_factory=list)
     safe_path: str | None = None
     detected_objects: list[str] = Field(default_factory=list)
@@ -93,6 +108,8 @@ class VideoTimelineItem(BaseModel):
     summary: str
     spoken_alert: str
     recommended_action: str
+    direction_hint: DirectionHint = "unknown"
+    proximity_hint: ProximityHint = "unknown"
     hazards: list[str] = Field(default_factory=list)
     safe_path: str | None = None
     detected_objects: list[str] = Field(default_factory=list)

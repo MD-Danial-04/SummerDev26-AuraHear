@@ -80,6 +80,59 @@ class RekaVisionTests(unittest.TestCase):
             alert.recommended_action,
             "Slow down and avoid the blocked path ahead.",
         )
+        self.assertEqual(alert.direction_hint, "center")
+        self.assertEqual(alert.proximity_hint, "immediate")
+
+    def test_parse_alert_infers_directional_guidance_for_left_obstacle(self):
+        alert = _parse_alert(
+            """
+            {
+              "danger_level": "low",
+              "confidence": 0.4,
+              "summary": "A chair is directly ahead on the left side of the walking path.",
+              "spoken_alert": "Chair left.",
+              "recommended_action": "Proceed carefully.",
+              "hazards": ["chair"],
+              "safe_path": "Right side is clearer.",
+              "detected_objects": ["chair"]
+            }
+            """
+        )
+
+        self.assertEqual(alert.danger_level, "medium")
+        self.assertEqual(alert.direction_hint, "left")
+        self.assertEqual(alert.proximity_hint, "immediate")
+        self.assertEqual(alert.spoken_alert, "Obstacle left. Veer right now.")
+        self.assertEqual(
+            alert.recommended_action,
+            "Veer right now and slow down until clear of the obstacle.",
+        )
+
+    def test_parse_alert_normalizes_model_direction_and_proximity_hints(self):
+        alert = _parse_alert(
+            """
+            {
+              "danger_level": "medium",
+              "confidence": 0.8,
+              "summary": "Barrier slightly right and close to the user's path.",
+              "spoken_alert": "Barrier right.",
+              "recommended_action": "Move away from it.",
+              "direction_hint": "slightly right",
+              "proximity_hint": "very close",
+              "hazards": ["barrier"],
+              "safe_path": "Left side is clearer.",
+              "detected_objects": ["barrier"]
+            }
+            """
+        )
+
+        self.assertEqual(alert.direction_hint, "center_right")
+        self.assertEqual(alert.proximity_hint, "immediate")
+        self.assertEqual(alert.spoken_alert, "Obstacle slightly right. Veer left now.")
+        self.assertEqual(
+            alert.recommended_action,
+            "Veer left now and slow down until clear of the obstacle.",
+        )
 
     def test_parse_alert_rejects_invalid_danger_level(self):
         with self.assertRaises(HTTPException) as exc:
@@ -166,6 +219,10 @@ class RekaVisionTests(unittest.TestCase):
             response.timeline[1].recommended_action,
             "Stop and wait before crossing.",
         )
+        self.assertEqual(response.alert.direction_hint, "center")
+        self.assertEqual(response.alert.proximity_hint, "immediate")
+        self.assertEqual(response.timeline[1].direction_hint, "center")
+        self.assertEqual(response.timeline[1].proximity_hint, "immediate")
         self.assertIn("bus", response.alert.hazards)
         self.assertIn("wet road", response.alert.hazards)
         self.assertIn(
@@ -285,6 +342,8 @@ class _FrameSamplingService(RekaVisionService):
                     summary="User is on the sidewalk near a bus stop.",
                     spoken_alert="Bus approaching, stay alert.",
                     recommended_action="Continue walking, but stay aware of the bus.",
+                    direction_hint="center",
+                    proximity_hint="ahead",
                     hazards=["bus"],
                     safe_path="Sidewalk to the right.",
                     detected_objects=["bus", "sidewalk"],
@@ -300,6 +359,8 @@ class _FrameSamplingService(RekaVisionService):
                 summary="User is entering a busy crossing with a bus approaching.",
                 spoken_alert="Bus ahead. Stop.",
                 recommended_action="Stop and wait before crossing.",
+                direction_hint="center",
+                proximity_hint="immediate",
                 hazards=["bus", "wet road"],
                 safe_path=None,
                 detected_objects=["bus", "street"],
