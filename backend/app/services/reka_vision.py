@@ -62,6 +62,50 @@ BLOCKED_PATH_KEYWORDS = {
     "glass",
 }
 
+STATIC_OBSTACLE_KEYWORDS = {
+    "obstacle",
+    "wall",
+    "barrier",
+    "blocked path",
+    "blocked sidewalk",
+    "closed door",
+    "door",
+    "gate",
+    "pole",
+    "bollard",
+    "bin",
+    "chair",
+    "table",
+    "fence",
+    "construction",
+    "glass",
+}
+
+TRAFFIC_KEYWORDS = {
+    "car",
+    "bus",
+    "taxi",
+    "truck",
+    "vehicle",
+    "traffic",
+    "cyclist",
+    "bike",
+    "bicycle",
+    "motorcycle",
+}
+
+DIRECTION_KEYWORDS = {
+    "upper_left": ["upper left", "top left"],
+    "upper_right": ["upper right", "top right"],
+    "lower_left": ["lower left", "bottom left"],
+    "lower_right": ["lower right", "bottom right"],
+    "center_left": ["center left", "slightly left", "just left"],
+    "center_right": ["center right", "slightly right", "just right"],
+    "left": ["left"],
+    "right": ["right"],
+    "center": ["ahead", "front", "center", "straight ahead"],
+}
+
 
 SYSTEM_PROMPT = """
 You are AuraHear, an assistive vision safety system for blind pedestrians.
@@ -82,11 +126,19 @@ Return only valid JSON with this exact shape:
   "summary": "brief scene summary",
   "spoken_alert": "short phrase suitable for text-to-speech",
   "recommended_action": "specific immediate action",
+  "direction_hint": "left|center_left|center|center_right|right|upper_left|upper_right|lower_left|lower_right|unknown",
+  "proximity_hint": "immediate|near|ahead|clear|unknown",
   "hazards": ["hazard 1"],
   "safe_path": "where the user can move safely, or null",
   "detected_objects": ["object 1"]
 }
+Use orthogonal phrasing like left, right, or center. Avoid clock-face directions.
 Keep spoken_alert under 14 words. Do not mention uncertainty unless it affects safety.
+Prefer a brief action in spoken_alert when useful, for example:
+"Obstacle left. Veer right." or "Obstacle ahead. Slow down."
+In recommended_action, give a concise maneuver suggestion such as veer slightly right,
+sidestep left, stay centered, or stop and rescan. Do not invent exact step counts or
+exact meter distances unless they are visually obvious.
 If the scene is unclear, be conservative and recommend slowing or stopping.
 Do not wrap the JSON in markdown fences or add any explanation before or after it.
 """.strip()
@@ -437,7 +489,8 @@ class RekaVisionService:
 def _build_user_prompt(source_type: str, context: str | None) -> str:
     prompt = (
         f"Analyze this {source_type} for immediate navigation hazards affecting the "
-        "user's direct path in the next 2-3 seconds. Prioritize close blocked-path "
+        "user's direct path in the next 2-3 seconds or roughly the next 1-2 steps. "
+        "Prioritize close blocked-path "
         "obstacles such as walls, closed doors, poles, bollards, bins, chairs, "
         "tables, barriers, curbs, stairs, and drops."
     )
@@ -524,40 +577,193 @@ def _decode_first_json_object(
 
 
 def _apply_blocked_path_guardrails(alert: HazardAlert) -> HazardAlert:
-    combined_text = " ".join(
+    combined_text = _alert_text(alert)
+    mentions_blocked_path = any(
+        keyword in combined_text
+        for keyword in BLOCKED_PATH_KEYWORDS
+    )
+
+    direction_hint = _resolve_direction_hint(alert, combined_text)
+    proximity_hint = _resolve_proximity_hint(alert, combined_text)
+
+    updated_fields: dict[str, Any] = {
+        "danger_level": alert.danger_level,
+        "confidence": alert.confidence,
+        "summary": alert.summary,
+        "spoken_alert": alert.spoken_alert,
+        "recommended_action": alert.recommended_action,
+        "direction_hint": direction_hint,
+        "proximity_hint": proximity_hint,
+        "hazards": list(alert.hazards),
+        "safe_path": alert.safe_path,
+        "detected_objects": list(alert.detected_objects),
+    }
+
+    if not mentions_blocked_path:
+        return HazardAlert.model_validate(updated_fields)
+
+    if alert.danger_level in {"none", "low"}:
+        updated_fields["danger_level"] = "medium"
+        updated_fields["confidence"] = max(alert.confidence, 0.6)
+
+    if any(keyword in combined_text for keyword in STATIC_OBSTACLE_KEYWORDS):
+        updated_fields["spoken_alert"] = _build_obstacle_spoken_alert(
+            direction_hint,
+            proximity_hint,
+        )
+        updated_fields["recommended_action"] = _build_obstacle_action(
+            direction_hint,
+            proximity_hint,
+            alert.safe_path,
+        )
+
+    return HazardAlert.model_validate(updated_fields)
+
+
+def _alert_text(alert: HazardAlert) -> str:
+    return " ".join(
         [
             alert.summary,
             alert.spoken_alert,
             alert.recommended_action,
             *alert.hazards,
             *alert.detected_objects,
+            alert.safe_path or "",
+            alert.direction_hint,
+            alert.proximity_hint,
         ]
     ).lower()
 
-    if not any(keyword in combined_text for keyword in BLOCKED_PATH_KEYWORDS):
-        return alert
 
-    if alert.danger_level in {"medium", "high", "critical"}:
-        return alert
+def _resolve_direction_hint(alert: HazardAlert, combined_text: str) -> str:
+    if alert.direction_hint != "unknown":
+        return alert.direction_hint
 
-    updated_fields: dict[str, Any] = {
-        "danger_level": "medium",
-        "confidence": max(alert.confidence, 0.6),
-        "summary": alert.summary,
-        "spoken_alert": alert.spoken_alert,
-        "recommended_action": alert.recommended_action,
-        "hazards": list(alert.hazards),
-        "safe_path": alert.safe_path,
-        "detected_objects": list(alert.detected_objects),
-    }
+    for direction_hint, phrases in DIRECTION_KEYWORDS.items():
+        if any(phrase in combined_text for phrase in phrases):
+            return direction_hint
 
-    if not _action_priority_score(alert.recommended_action, alert.spoken_alert):
-        updated_fields["recommended_action"] = (
-            "Slow down and avoid the blocked path ahead."
+    return "unknown"
+
+
+def _resolve_proximity_hint(alert: HazardAlert, combined_text: str) -> str:
+    if alert.proximity_hint != "unknown":
+        return alert.proximity_hint
+
+    if alert.danger_level == "none" and not alert.hazards:
+        return "clear"
+
+    if any(
+        phrase in combined_text
+        for phrase in [
+            "imminent",
+            "immediately",
+            "right ahead",
+            "directly ahead",
+            "very close",
+            "about to hit",
+        ]
+    ):
+        return "immediate"
+
+    if alert.danger_level in {"high", "critical"}:
+        return "immediate"
+
+    if alert.danger_level == "medium":
+        return "near"
+
+    if alert.hazards or alert.detected_objects:
+        return "ahead"
+
+    return "unknown"
+
+
+def _build_obstacle_spoken_alert(
+    direction_hint: str,
+    proximity_hint: str,
+) -> str:
+    direction_phrase = _direction_phrase(direction_hint)
+    action_phrase = _short_avoidance_phrase(direction_hint, proximity_hint)
+    return f"Obstacle {direction_phrase}. {action_phrase}"
+
+
+def _build_obstacle_action(
+    direction_hint: str,
+    proximity_hint: str,
+    safe_path: str | None,
+) -> str:
+    clear_side = _preferred_clear_side(safe_path) or _opposite_side(direction_hint)
+
+    if clear_side == "right":
+        return (
+            "Move slightly right and continue cautiously past the obstacle."
+            if proximity_hint != "immediate"
+            else "Veer right now and slow down until clear of the obstacle."
         )
-        updated_fields["spoken_alert"] = "Obstacle ahead. Slow down."
 
-    return HazardAlert.model_validate(updated_fields)
+    if clear_side == "left":
+        return (
+            "Move slightly left and continue cautiously past the obstacle."
+            if proximity_hint != "immediate"
+            else "Veer left now and slow down until clear of the obstacle."
+        )
+
+    if proximity_hint == "immediate":
+        return "Stop before the obstacle and rescan for a clear side."
+
+    return "Slow down, keep the obstacle centered in mind, and rescan for a clear side."
+
+
+def _direction_phrase(direction_hint: str) -> str:
+    mapping = {
+        "left": "left",
+        "center_left": "slightly left",
+        "center": "ahead",
+        "center_right": "slightly right",
+        "right": "right",
+        "upper_left": "upper left",
+        "upper_right": "upper right",
+        "lower_left": "lower left",
+        "lower_right": "lower right",
+        "unknown": "ahead",
+    }
+    return mapping.get(direction_hint, "ahead")
+
+
+def _short_avoidance_phrase(direction_hint: str, proximity_hint: str) -> str:
+    clear_side = _opposite_side(direction_hint)
+    if proximity_hint == "immediate":
+        if clear_side == "right":
+            return "Veer right now."
+        if clear_side == "left":
+            return "Veer left now."
+        return "Stop now."
+
+    if clear_side == "right":
+        return "Veer right."
+    if clear_side == "left":
+        return "Veer left."
+    return "Slow down."
+
+
+def _preferred_clear_side(safe_path: str | None) -> str | None:
+    if not safe_path:
+        return None
+
+    normalized = safe_path.lower()
+    if "right" in normalized:
+        return "right"
+    if "left" in normalized:
+        return "left"
+    return None
+
+
+def _opposite_side(direction_hint: str) -> str | None:
+    if direction_hint in {"left", "center_left", "upper_left", "lower_left"}:
+        return "right"
+    if direction_hint in {"right", "center_right", "upper_right", "lower_right"}:
+        return "left"
+    return None
 
 
 def _response_text(content: Any) -> str:
@@ -737,6 +943,8 @@ def _merge_frame_analyses(
             summary=summary,
             spoken_alert=winning_alert.spoken_alert,
             recommended_action=winning_alert.recommended_action,
+            direction_hint=winning_alert.direction_hint,
+            proximity_hint=winning_alert.proximity_hint,
             hazards=hazards,
             safe_path=safe_path,
             detected_objects=detected_objects,
@@ -771,6 +979,8 @@ def _timeline_item(
         summary=alert.summary,
         spoken_alert=alert.spoken_alert,
         recommended_action=alert.recommended_action,
+        direction_hint=alert.direction_hint,
+        proximity_hint=alert.proximity_hint,
         hazards=alert.hazards,
         safe_path=alert.safe_path,
         detected_objects=alert.detected_objects,
@@ -821,10 +1031,14 @@ def _normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
     payload.setdefault("summary", "Scene analysis was incomplete.")
     payload.setdefault("spoken_alert", "Slow down and rescan.")
     payload.setdefault("recommended_action", "Slow down, hold position, and scan again.")
+    payload.setdefault("direction_hint", "unknown")
+    payload.setdefault("proximity_hint", "unknown")
     payload.setdefault("hazards", [])
     payload.setdefault("detected_objects", [])
     payload.setdefault("safe_path", None)
     payload["confidence"] = _clamp_confidence(payload["confidence"])
+    payload["direction_hint"] = _normalize_direction_hint(payload["direction_hint"])
+    payload["proximity_hint"] = _normalize_proximity_hint(payload["proximity_hint"])
     payload["hazards"] = _string_list(payload["hazards"])
     payload["detected_objects"] = _string_list(payload["detected_objects"])
     return payload
@@ -836,6 +1050,52 @@ def _clamp_confidence(value: Any) -> float:
     except (TypeError, ValueError):
         return 0.0
     return max(0.0, min(1.0, confidence))
+
+
+def _normalize_direction_hint(value: Any) -> str:
+    normalized = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    synonyms = {
+        "slight_left": "center_left",
+        "slightly_left": "center_left",
+        "slight_right": "center_right",
+        "slightly_right": "center_right",
+        "ahead": "center",
+        "front": "center",
+        "straight_ahead": "center",
+        "top_left": "upper_left",
+        "top_right": "upper_right",
+        "bottom_left": "lower_left",
+        "bottom_right": "lower_right",
+    }
+    normalized = synonyms.get(normalized, normalized)
+    if normalized in {
+        "left",
+        "center_left",
+        "center",
+        "center_right",
+        "right",
+        "upper_left",
+        "upper_right",
+        "lower_left",
+        "lower_right",
+    }:
+        return normalized
+    return "unknown"
+
+
+def _normalize_proximity_hint(value: Any) -> str:
+    normalized = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    synonyms = {
+        "very_close": "immediate",
+        "close": "near",
+        "nearby": "near",
+        "soon": "ahead",
+        "safe": "clear",
+    }
+    normalized = synonyms.get(normalized, normalized)
+    if normalized in {"immediate", "near", "ahead", "clear"}:
+        return normalized
+    return "unknown"
 
 
 def _string_list(value: Any) -> list[str]:
