@@ -71,3 +71,10 @@ def _float_env(name: str, default: float) -> float:
     if not value:
         return default
     return float(value)
+
+
+def is_osm_user_agent_configured(user_agent: str) -> bool:
+    normalized = user_agent.strip().lower()
+    if not normalized:
+        return False
+    return "example.com" not in normalized and "team@" not in normalized

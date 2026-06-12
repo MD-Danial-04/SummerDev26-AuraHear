@@ -1,5 +1,6 @@
 import json
 import math
+from collections import OrderedDict
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -15,19 +16,29 @@ from app.models import (
     NavigationStep,
     NavigationSummary,
 )
+from app.utils.geo import is_in_singapore_bounds, require_singapore_coordinate
+
+_GEOCODE_CACHE_MAX = 64
 
 
 class OSMNavigationService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self._geocode_cache: OrderedDict[str, GeocodeResponse] = OrderedDict()
 
     def geocode(self, query: str, limit: int = 5) -> GeocodeResponse:
+        cache_key = f"{query.strip().lower()}:{limit}"
+        cached = self._geocode_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         params = urlencode(
             {
                 "q": query,
                 "format": "jsonv2",
                 "limit": limit,
                 "addressdetails": 0,
+                "countrycodes": "sg",
             }
         )
         url = f"{self.settings.osm_nominatim_base_url.rstrip('/')}/search?{params}"
@@ -46,14 +57,34 @@ class OSMNavigationService:
                 lon=float(item["lon"]),
             )
             for item in payload
-            if "lat" in item and "lon" in item
+            if "lat" in item
+            and "lon" in item
+            and is_in_singapore_bounds(float(item["lat"]), float(item["lon"]))
         ]
-        return GeocodeResponse(query=query, results=results)
+
+        if not results:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No Singapore matches for query.",
+            )
+
+        response = GeocodeResponse(query=query, results=results)
+        self._geocode_cache[cache_key] = response
+        if len(self._geocode_cache) > _GEOCODE_CACHE_MAX:
+            self._geocode_cache.popitem(last=False)
+        return response
 
     def build_route(
         self,
         request: NavigationRouteRequest,
     ) -> NavigationRouteResponse:
+        require_singapore_coordinate(request.origin.lat, request.origin.lon, "Origin")
+        require_singapore_coordinate(
+            request.destination.lat,
+            request.destination.lon,
+            "Destination",
+        )
+
         coordinates = (
             f"{request.origin.lon},{request.origin.lat};"
             f"{request.destination.lon},{request.destination.lat}"

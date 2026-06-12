@@ -98,6 +98,7 @@ function useAppState(videoRef) {
   const getCameraStream = useCallback(() => camera.getStream(), [camera])
   const chunkAnalysis = useChunkVideoAnalysis(getCameraStream)
   const liveLocation = useLiveLocation()
+  const navSpeechResumeRef = useRef(null)
   const cameraError = camera.error
 
   useEffect(() => {
@@ -176,6 +177,36 @@ function useAppState(videoRef) {
     setSessionId(null)
     setLastSpeechSource('idle')
   }, [camera, chunkAnalysis, liveLocation])
+
+  const ensureCaptureForNavigation = useCallback(async () => {
+    primeAudio()
+    primeSpeech()
+
+    if (active) {
+      if (
+        liveLocation.status === 'idle' ||
+        liveLocation.status === 'error' ||
+        liveLocation.status === 'unsupported'
+      ) {
+        try {
+          await liveLocation.requestLocation({ keepUpdated: true })
+        } catch {
+          return false
+        }
+      }
+      return true
+    }
+
+    return startCapture()
+  }, [active, liveLocation, startCapture])
+
+  const registerNavSpeechResume = useCallback((callback) => {
+    navSpeechResumeRef.current = callback
+  }, [])
+
+  const unregisterNavSpeechResume = useCallback(() => {
+    navSpeechResumeRef.current = null
+  }, [])
 
   const handleStart = useCallback(async () => {
     if (!active) {
@@ -307,6 +338,7 @@ function useAppState(videoRef) {
       rate: speechRate,
     }).then((speechResult) => {
       setLastSpeechSource(speechResult.ok ? 'system-tts' : 'idle')
+      navSpeechResumeRef.current?.()
     })
 
     showToast(result.alert.recommended_action)
@@ -395,6 +427,9 @@ function useAppState(videoRef) {
     speechTestError,
     handleTestSpeech,
     liveLocation,
+    ensureCaptureForNavigation,
+    registerNavSpeechResume,
+    unregisterNavSpeechResume,
     developerDetails: {
       colors,
       sessionId,
