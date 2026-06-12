@@ -6,6 +6,7 @@ import { useCameraStream } from '../hooks/useCameraStream.js'
 import { useChunkRecorder } from '../hooks/useChunkRecorder.js'
 import { useColorTheme } from '../hooks/useColorTheme.js'
 import { useInteractionFeedback } from '../hooks/useInteractionFeedback.js'
+import { useLiveLocation } from '../hooks/useLiveLocation.js'
 import { useThreatRelay } from '../hooks/useThreatRelay.js'
 import { useThreatStream } from '../hooks/useThreatStream.js'
 import { useUploadQueue } from '../hooks/useUploadQueue.js'
@@ -73,6 +74,7 @@ function useAppState(videoRef) {
   const feedback = useInteractionFeedback()
   const camera = useCameraStream(videoRef)
   const recorder = useChunkRecorder()
+  const liveLocation = useLiveLocation()
   const uploadQueue = useUploadQueue()
   const threatStream = useThreatStream(active ? sessionId : null)
   const threatRelay = useThreatRelay(threatStream.latestWarning)
@@ -344,6 +346,7 @@ function useAppState(videoRef) {
     speechTestError,
     handleTestSpeech,
     threatStream,
+    liveLocation,
     developerDetails: {
       colors,
       sessionId,
@@ -351,12 +354,22 @@ function useAppState(videoRef) {
       uploadStatus: uploadQueue.uploadStatus,
       recorderMimeType: recorder.mimeType,
       active,
+      liveLocationStatus: liveLocation.status,
+      liveLocationUpdatedAt: liveLocation.updatedAt ?? '—',
+      liveLocationAccuracy:
+        liveLocation.coordinates?.accuracyMeters != null
+          ? `${Math.round(liveLocation.coordinates.accuracyMeters)} m`
+          : '—',
+      liveLocationCoords: liveLocation.coordinates
+        ? `${liveLocation.coordinates.lat.toFixed(6)}, ${liveLocation.coordinates.lon.toFixed(6)}`
+        : '—',
       connectionStatus: threatStream.connectionStatus,
       lastSpeechSource: threatRelay.lastSpeechSource,
       speechDebug,
       capabilities: threatRelay.capabilities,
       recorderError,
       cameraError,
+      liveLocationError: liveLocation.error,
     },
   }
 }
