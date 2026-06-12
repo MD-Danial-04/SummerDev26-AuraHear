@@ -6,7 +6,7 @@ import { SettingsDrawer } from '../components/SettingsDrawer.jsx'
 import { useCameraStream } from '../hooks/useCameraStream.js'
 import { useColorTheme } from '../hooks/useColorTheme.js'
 import { useInteractionFeedback } from '../hooks/useInteractionFeedback.js'
-import { useChunkVideoAnalysis } from '../hooks/useChunkVideoAnalysis.js'
+import { useLiveFrameAnalysis } from '../hooks/useLiveFrameAnalysis.js'
 import { useLiveLocation } from '../hooks/useLiveLocation.js'
 import { useVoiceCommands } from '../hooks/useVoiceCommands.js'
 import {
@@ -48,7 +48,7 @@ const THEME_NAMES = {
 }
 
 const LIVE_ANALYSIS_CONTEXT =
-  'User is walking forward and only needs hazards affecting their path in the next 2 to 3 seconds.'
+  'User is walking forward and needs immediate spoken warnings for hazards or obstacles directly in the path within the next 1 to 2 steps. Warn about walls, closed doors, poles, bollards, bins, chairs, tables, barriers, curbs, stairs, drops, and blocked sidewalks or corridors.'
 
 function toThreatSeverity(dangerLevel) {
   if (dangerLevel === 'critical') return 'critical'
@@ -95,8 +95,7 @@ function useAppState(videoRef) {
   const { theme, setTheme, colors } = useColorTheme('white-on-black')
   const feedback = useInteractionFeedback()
   const camera = useCameraStream(videoRef)
-  const getCameraStream = useCallback(() => camera.getStream(), [camera])
-  const chunkAnalysis = useChunkVideoAnalysis(getCameraStream)
+  const frameAnalysis = useLiveFrameAnalysis(videoRef)
   const liveLocation = useLiveLocation()
   const navSpeechResumeRef = useRef(null)
   const navHazardRerouteRef = useRef(null)
@@ -125,7 +124,7 @@ function useAppState(videoRef) {
       void video.play().catch(() => {})
     }
 
-  }, [active, camera, videoRef])
+  }, [camera, videoRef])
 
   useEffect(() => {
     if (!active) return
@@ -153,7 +152,7 @@ function useAppState(videoRef) {
         alertCooldownSeconds: 6,
       })
       setSessionId(session.session_id)
-      chunkAnalysis.start(session.session_id, LIVE_ANALYSIS_CONTEXT, {
+      frameAnalysis.start(session.session_id, LIVE_ANALYSIS_CONTEXT, {
         alertCooldownSeconds: 6,
       })
       void liveLocation.requestLocation().catch(() => {})
@@ -166,10 +165,10 @@ function useAppState(videoRef) {
       showToast(message)
       return false
     }
-  }, [camera, chunkAnalysis, liveLocation, showToast])
+  }, [camera, frameAnalysis, liveLocation, showToast])
 
   const stopCapture = useCallback(() => {
-    chunkAnalysis.stop()
+    frameAnalysis.stop()
     liveLocation.stopTracking()
     camera.stop()
     stopCurrentAudio()
@@ -177,7 +176,7 @@ function useAppState(videoRef) {
     setActive(false)
     setSessionId(null)
     setLastSpeechSource('idle')
-  }, [camera, chunkAnalysis, liveLocation])
+  }, [camera, frameAnalysis, liveLocation])
 
   const ensureCaptureForNavigation = useCallback(async () => {
     primeAudio()
@@ -320,7 +319,7 @@ function useAppState(videoRef) {
   }, [volume, speechRate, showToast])
 
   useEffect(() => {
-    const result = chunkAnalysis.latestResult
+    const result = frameAnalysis.latestResult
     if (!result) return
 
     const severity = toThreatSeverity(result.alert.danger_level)
@@ -352,12 +351,12 @@ function useAppState(videoRef) {
     })
 
     showToast(result.alert.recommended_action)
-  }, [chunkAnalysis.latestResult, showToast, speechRate, volume])
+  }, [frameAnalysis.latestResult, showToast, speechRate, volume])
 
   useEffect(() => {
-    if (!chunkAnalysis.error) return
-    showToast(chunkAnalysis.error)
-  }, [chunkAnalysis.error, showToast])
+    if (!frameAnalysis.error) return
+    showToast(frameAnalysis.error)
+  }, [frameAnalysis.error, showToast])
 
   useVoiceCommands(voiceEnabled, {
     onStart: () => void handleStart(),
@@ -446,22 +445,20 @@ function useAppState(videoRef) {
       colors,
       sessionId,
       active,
-      captureMode: 'video_chunk',
-      connectionStatus: chunkAnalysis.status,
-      analysisMode: chunkAnalysis.latestResult?.analysis_mode ?? '—',
-      analysisCount: chunkAnalysis.analysisCount,
-      chunkCount: chunkAnalysis.chunkCount,
-      lastChunkBytes: chunkAnalysis.lastChunkBytes,
-      lastAnalyzedAt: chunkAnalysis.lastAnalyzedAt ?? '—',
-      latestDanger: chunkAnalysis.latestResult?.alert.danger_level ?? '—',
-      latestAlert: chunkAnalysis.latestResult?.alert.spoken_alert ?? '—',
-      latestAction: chunkAnalysis.latestResult?.alert.recommended_action ?? '—',
-      latestSafePath: chunkAnalysis.latestResult?.alert.safe_path ?? '—',
+      captureMode: 'frame',
+      connectionStatus: frameAnalysis.status,
+      analysisMode: frameAnalysis.latestResult?.analysis_mode ?? '—',
+      analysisCount: frameAnalysis.analysisCount,
+      lastAnalyzedAt: frameAnalysis.lastAnalyzedAt ?? '—',
+      latestDanger: frameAnalysis.latestResult?.alert.danger_level ?? '—',
+      latestAlert: frameAnalysis.latestResult?.alert.spoken_alert ?? '—',
+      latestAction: frameAnalysis.latestResult?.alert.recommended_action ?? '—',
+      latestSafePath: frameAnalysis.latestResult?.alert.safe_path ?? '—',
       shouldSpeak:
-        chunkAnalysis.latestResult?.should_speak === undefined
+        frameAnalysis.latestResult?.should_speak === undefined
           ? '—'
-          : String(chunkAnalysis.latestResult.should_speak),
-      suppressedReason: chunkAnalysis.latestResult?.suppressed_reason ?? '—',
+          : String(frameAnalysis.latestResult.should_speak),
+      suppressedReason: frameAnalysis.latestResult?.suppressed_reason ?? '—',
       liveLocationStatus: liveLocation.status,
       liveLocationUpdatedAt: liveLocation.updatedAt ?? '—',
       liveLocationAccuracy:
@@ -478,12 +475,12 @@ function useAppState(videoRef) {
         speech: isSpeechSupported(),
         vibration: isVibrationSupported(),
       },
-      analysisError: chunkAnalysis.error,
+      analysisError: frameAnalysis.error,
       cameraError,
       liveLocationError: liveLocation.error,
     },
-    analysisStatus: chunkAnalysis.status,
-    analysisError: chunkAnalysis.error,
+    analysisStatus: frameAnalysis.status,
+    analysisError: frameAnalysis.error,
   }
 }
 

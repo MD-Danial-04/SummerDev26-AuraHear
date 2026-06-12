@@ -39,6 +39,29 @@ ACTION_PRIORITY = {
     "move back": 5,
 }
 
+BLOCKED_PATH_KEYWORDS = {
+    "obstacle",
+    "wall",
+    "barrier",
+    "blocked path",
+    "blocked sidewalk",
+    "closed door",
+    "door",
+    "gate",
+    "pole",
+    "bollard",
+    "bin",
+    "chair",
+    "table",
+    "curb",
+    "stairs",
+    "stair",
+    "drop",
+    "fence",
+    "construction",
+    "glass",
+}
+
 
 SYSTEM_PROMPT = """
 You are AuraHear, an assistive vision safety system for blind pedestrians.
@@ -46,6 +69,11 @@ Analyze the supplied image or short video for immediate physical danger.
 Prioritize hazards that require action in the next 1-5 seconds: moving vehicles,
 cyclists, obstacles, stairs, drops, construction, wet floors, crowds, blocked paths,
 traffic signals, and people approaching quickly.
+Pay special attention to static obstacles directly ahead in the walking path:
+walls, closed doors, poles, bollards, bins, chairs, tables, barriers, curbs,
+glass panels, and low obstacles. If the direct path appears blocked within the
+next 1-2 steps, return at least medium danger. If collision appears imminent,
+recommend stopping immediately.
 
 Return only valid JSON with this exact shape:
 {
@@ -409,7 +437,9 @@ class RekaVisionService:
 def _build_user_prompt(source_type: str, context: str | None) -> str:
     prompt = (
         f"Analyze this {source_type} for immediate navigation hazards affecting the "
-        "user's direct path in the next 2-3 seconds."
+        "user's direct path in the next 2-3 seconds. Prioritize close blocked-path "
+        "obstacles such as walls, closed doors, poles, bollards, bins, chairs, "
+        "tables, barriers, curbs, stairs, and drops."
     )
     if context:
         prompt += f" User context: {context}"
@@ -437,12 +467,14 @@ def _parse_alert(raw_text: str) -> HazardAlert:
         )
 
     try:
-        return HazardAlert.model_validate(_normalize_payload(payload))
+        alert = HazardAlert.model_validate(_normalize_payload(payload))
     except ValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Reka returned invalid safety fields: {exc.errors()}",
         ) from exc
+
+    return _apply_blocked_path_guardrails(alert)
 
 
 def _strip_code_fence(raw_text: str) -> str:
@@ -489,6 +521,43 @@ def _decode_first_json_object(
             return payload
 
     return None
+
+
+def _apply_blocked_path_guardrails(alert: HazardAlert) -> HazardAlert:
+    combined_text = " ".join(
+        [
+            alert.summary,
+            alert.spoken_alert,
+            alert.recommended_action,
+            *alert.hazards,
+            *alert.detected_objects,
+        ]
+    ).lower()
+
+    if not any(keyword in combined_text for keyword in BLOCKED_PATH_KEYWORDS):
+        return alert
+
+    if alert.danger_level in {"medium", "high", "critical"}:
+        return alert
+
+    updated_fields: dict[str, Any] = {
+        "danger_level": "medium",
+        "confidence": max(alert.confidence, 0.6),
+        "summary": alert.summary,
+        "spoken_alert": alert.spoken_alert,
+        "recommended_action": alert.recommended_action,
+        "hazards": list(alert.hazards),
+        "safe_path": alert.safe_path,
+        "detected_objects": list(alert.detected_objects),
+    }
+
+    if not _action_priority_score(alert.recommended_action, alert.spoken_alert):
+        updated_fields["recommended_action"] = (
+            "Slow down and avoid the blocked path ahead."
+        )
+        updated_fields["spoken_alert"] = "Obstacle ahead. Slow down."
+
+    return HazardAlert.model_validate(updated_fields)
 
 
 def _response_text(content: Any) -> str:

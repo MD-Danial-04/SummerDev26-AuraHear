@@ -57,6 +57,30 @@ class RekaVisionTests(unittest.TestCase):
         self.assertEqual(alert.spoken_alert, "Cyclist left. Slow down.")
         self.assertEqual(alert.safe_path, "Keep slightly right.")
 
+    def test_parse_alert_escalates_close_blocked_path_obstacles(self):
+        alert = _parse_alert(
+            """
+            {
+              "danger_level": "low",
+              "confidence": 0.35,
+              "summary": "A wall is directly ahead in the walking path.",
+              "spoken_alert": "Wall ahead.",
+              "recommended_action": "Continue carefully.",
+              "hazards": ["wall"],
+              "safe_path": null,
+              "detected_objects": ["wall"]
+            }
+            """
+        )
+
+        self.assertEqual(alert.danger_level, "medium")
+        self.assertGreaterEqual(alert.confidence, 0.6)
+        self.assertEqual(alert.spoken_alert, "Obstacle ahead. Slow down.")
+        self.assertEqual(
+            alert.recommended_action,
+            "Slow down and avoid the blocked path ahead.",
+        )
+
     def test_parse_alert_rejects_invalid_danger_level(self):
         with self.assertRaises(HTTPException) as exc:
             _parse_alert(
