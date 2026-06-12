@@ -75,10 +75,10 @@ class RekaVisionTests(unittest.TestCase):
 
         self.assertEqual(alert.danger_level, "medium")
         self.assertGreaterEqual(alert.confidence, 0.6)
-        self.assertEqual(alert.spoken_alert, "Obstacle ahead. Slow down.")
+        self.assertEqual(alert.spoken_alert, "Wall ahead. Stop now.")
         self.assertEqual(
             alert.recommended_action,
-            "Slow down and avoid the blocked path ahead.",
+            "Stop before the wall and rescan for a clear side.",
         )
         self.assertEqual(alert.direction_hint, "center")
         self.assertEqual(alert.proximity_hint, "immediate")
@@ -102,10 +102,10 @@ class RekaVisionTests(unittest.TestCase):
         self.assertEqual(alert.danger_level, "medium")
         self.assertEqual(alert.direction_hint, "left")
         self.assertEqual(alert.proximity_hint, "immediate")
-        self.assertEqual(alert.spoken_alert, "Obstacle left. Veer right now.")
+        self.assertEqual(alert.spoken_alert, "Chair left. Veer right now.")
         self.assertEqual(
             alert.recommended_action,
-            "Veer right now and slow down until clear of the obstacle.",
+            "Veer right now and slow down until clear of the chair.",
         )
 
     def test_parse_alert_normalizes_model_direction_and_proximity_hints(self):
@@ -128,10 +128,34 @@ class RekaVisionTests(unittest.TestCase):
 
         self.assertEqual(alert.direction_hint, "center_right")
         self.assertEqual(alert.proximity_hint, "immediate")
-        self.assertEqual(alert.spoken_alert, "Obstacle slightly right. Veer left now.")
+        self.assertEqual(alert.spoken_alert, "Barrier slightly right. Veer left now.")
         self.assertEqual(
             alert.recommended_action,
-            "Veer left now and slow down until clear of the obstacle.",
+            "Veer left now and slow down until clear of the barrier.",
+        )
+
+    def test_parse_alert_uses_generic_obstacle_when_object_is_unspecified(self):
+        alert = _parse_alert(
+            """
+            {
+              "danger_level": "low",
+              "confidence": 0.45,
+              "summary": "An obstacle is directly ahead in the walking path.",
+              "spoken_alert": "Something ahead.",
+              "recommended_action": "Be careful.",
+              "hazards": ["obstacle"],
+              "safe_path": null,
+              "detected_objects": []
+            }
+            """
+        )
+
+        self.assertEqual(alert.direction_hint, "center")
+        self.assertEqual(alert.proximity_hint, "immediate")
+        self.assertEqual(alert.spoken_alert, "Obstacle ahead. Stop now.")
+        self.assertEqual(
+            alert.recommended_action,
+            "Stop before the obstacle and rescan for a clear side.",
         )
 
     def test_parse_alert_rejects_invalid_danger_level(self):

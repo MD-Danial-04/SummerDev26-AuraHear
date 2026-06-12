@@ -81,6 +81,14 @@ STATIC_OBSTACLE_KEYWORDS = {
     "glass",
 }
 
+GENERIC_OBJECT_LABELS = {
+    "obstacle",
+    "hazard",
+    "object",
+    "blocked path",
+    "blocked sidewalk",
+}
+
 TRAFFIC_KEYWORDS = {
     "car",
     "bus",
@@ -136,6 +144,8 @@ Use orthogonal phrasing like left, right, or center. Avoid clock-face directions
 Keep spoken_alert under 14 words. Do not mention uncertainty unless it affects safety.
 Prefer a brief action in spoken_alert when useful, for example:
 "Obstacle left. Veer right." or "Obstacle ahead. Slow down."
+If a specific obstacle is identifiable, keep its name in the alert, for example:
+"Chair left. Veer right." or "Closed door ahead. Stop."
 In recommended_action, give a concise maneuver suggestion such as veer slightly right,
 sidestep left, stay centered, or stop and rescan. Do not invent exact step counts or
 exact meter distances unless they are visually obvious.
@@ -607,11 +617,15 @@ def _apply_blocked_path_guardrails(alert: HazardAlert) -> HazardAlert:
         updated_fields["confidence"] = max(alert.confidence, 0.6)
 
     if any(keyword in combined_text for keyword in STATIC_OBSTACLE_KEYWORDS):
+        obstacle_label = _primary_obstacle_label(alert, combined_text)
         updated_fields["spoken_alert"] = _build_obstacle_spoken_alert(
+            obstacle_label,
             direction_hint,
             proximity_hint,
+            alert.safe_path,
         )
         updated_fields["recommended_action"] = _build_obstacle_action(
+            obstacle_label,
             direction_hint,
             proximity_hint,
             alert.safe_path,
@@ -678,40 +692,83 @@ def _resolve_proximity_hint(alert: HazardAlert, combined_text: str) -> str:
     return "unknown"
 
 
+def _primary_obstacle_label(alert: HazardAlert, combined_text: str) -> str:
+    candidates = [
+        *alert.detected_objects,
+        *alert.hazards,
+    ]
+
+    for candidate in candidates:
+        normalized = str(candidate).strip().lower()
+        if (
+            normalized
+            and normalized in STATIC_OBSTACLE_KEYWORDS
+            and normalized not in GENERIC_OBJECT_LABELS
+            and normalized not in TRAFFIC_KEYWORDS
+        ):
+            return normalized
+
+    for keyword in STATIC_OBSTACLE_KEYWORDS:
+        if keyword in combined_text and keyword not in GENERIC_OBJECT_LABELS:
+            return keyword
+
+    return "obstacle"
+
+
 def _build_obstacle_spoken_alert(
+    obstacle_label: str,
     direction_hint: str,
     proximity_hint: str,
+    safe_path: str | None,
 ) -> str:
     direction_phrase = _direction_phrase(direction_hint)
-    action_phrase = _short_avoidance_phrase(direction_hint, proximity_hint)
-    return f"Obstacle {direction_phrase}. {action_phrase}"
+    clear_side = _preferred_clear_side(safe_path) or _opposite_side(direction_hint)
+    action_phrase = _short_avoidance_phrase(clear_side, proximity_hint)
+    subject = _spoken_object_label(obstacle_label)
+    return f"{subject} {direction_phrase}. {action_phrase}"
 
 
 def _build_obstacle_action(
+    obstacle_label: str,
     direction_hint: str,
     proximity_hint: str,
     safe_path: str | None,
 ) -> str:
     clear_side = _preferred_clear_side(safe_path) or _opposite_side(direction_hint)
+    obstacle_phrase = _action_object_label(obstacle_label)
+    urgent_movement_hint = _movement_hint(clear_side, direction_hint, immediate=True)
+    steady_movement_hint = _movement_hint(clear_side, direction_hint, immediate=False)
 
     if clear_side == "right":
         return (
-            "Move slightly right and continue cautiously past the obstacle."
+            f"{steady_movement_hint} and continue cautiously past the {obstacle_phrase}."
             if proximity_hint != "immediate"
-            else "Veer right now and slow down until clear of the obstacle."
+            else f"{urgent_movement_hint} now and slow down until clear of the {obstacle_phrase}."
         )
 
     if clear_side == "left":
         return (
-            "Move slightly left and continue cautiously past the obstacle."
+            f"{steady_movement_hint} and continue cautiously past the {obstacle_phrase}."
             if proximity_hint != "immediate"
-            else "Veer left now and slow down until clear of the obstacle."
+            else f"{urgent_movement_hint} now and slow down until clear of the {obstacle_phrase}."
         )
 
     if proximity_hint == "immediate":
-        return "Stop before the obstacle and rescan for a clear side."
+        return f"Stop before the {obstacle_phrase} and rescan for a clear side."
 
-    return "Slow down, keep the obstacle centered in mind, and rescan for a clear side."
+    return (
+        f"Slow down, keep the {obstacle_phrase} in mind, and rescan for a clear side."
+    )
+
+
+def _spoken_object_label(obstacle_label: str) -> str:
+    if obstacle_label == "obstacle":
+        return "Obstacle"
+    return obstacle_label.capitalize()
+
+
+def _action_object_label(obstacle_label: str) -> str:
+    return obstacle_label if obstacle_label != "obstacle" else "obstacle"
 
 
 def _direction_phrase(direction_hint: str) -> str:
@@ -730,8 +787,7 @@ def _direction_phrase(direction_hint: str) -> str:
     return mapping.get(direction_hint, "ahead")
 
 
-def _short_avoidance_phrase(direction_hint: str, proximity_hint: str) -> str:
-    clear_side = _opposite_side(direction_hint)
+def _short_avoidance_phrase(clear_side: str | None, proximity_hint: str) -> str:
     if proximity_hint == "immediate":
         if clear_side == "right":
             return "Veer right now."
@@ -744,6 +800,24 @@ def _short_avoidance_phrase(direction_hint: str, proximity_hint: str) -> str:
     if clear_side == "left":
         return "Veer left."
     return "Slow down."
+
+
+def _movement_hint(clear_side: str | None, direction_hint: str, *, immediate: bool) -> str:
+    if clear_side == "right":
+        if immediate:
+            return "Veer right"
+        if direction_hint in {"left", "center_left", "upper_left", "lower_left"}:
+            return "Keep right"
+        return "Veer slightly right"
+
+    if clear_side == "left":
+        if immediate:
+            return "Veer left"
+        if direction_hint in {"right", "center_right", "upper_right", "lower_right"}:
+            return "Keep left"
+        return "Veer slightly left"
+
+    return "Slow down"
 
 
 def _preferred_clear_side(safe_path: str | None) -> str | None:
