@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
+import shutil
 
 from app.config import Settings, get_settings
 from app.models import (
@@ -33,9 +34,22 @@ router = APIRouter()
 CAPTURE_MODE_VIDEO_CHUNK = "video_chunk"
 
 
+def _normalize_video_content_type(content_type: str) -> str:
+    lowered = content_type.lower()
+    if "webm" in lowered:
+        return "video/webm"
+    if "mp4" in lowered or "quicktime" in lowered:
+        return "video/mp4"
+    return content_type
+
+
 @router.get("/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "ffmpeg_available": shutil.which("ffmpeg") is not None,
+        "ffprobe_available": shutil.which("ffprobe") is not None,
+    }
 
 
 @router.get("/sessions/{session_id}/warnings")
@@ -172,9 +186,15 @@ async def analyze_session_frame(
     session_id: str,
     frame: UploadFile = File(...),
     context: str | None = Form(default=None),
+    alert_cooldown_seconds: int | None = Form(default=None),
     settings: Settings = Depends(get_settings),
     service: RekaVisionService = Depends(get_reka_service),
 ):
+    session_store.ensure_session(
+        session_id,
+        context=context,
+        alert_cooldown_seconds=alert_cooldown_seconds or 8,
+    )
     _enforce_session_analysis_rate(session_id, settings)
     analysis_context = _merge_context(session_store.get_context(session_id), context)
     analysis = await service.analyze_upload_safely(frame, "image", analysis_context)
@@ -189,6 +209,7 @@ def analyze_session_frame_url(
     settings: Settings = Depends(get_settings),
     service: RekaVisionService = Depends(get_reka_service),
 ):
+    session_store.ensure_session(session_id, context=request.context)
     _enforce_session_analysis_rate(session_id, settings)
     analysis_context = _merge_context(
         session_store.get_context(session_id),
@@ -208,9 +229,15 @@ async def analyze_session_video(
     session_id: str,
     video: UploadFile = File(...),
     context: str | None = Form(default=None),
+    alert_cooldown_seconds: int | None = Form(default=None),
     settings: Settings = Depends(get_settings),
     service: RekaVisionService = Depends(get_reka_service),
 ):
+    session_store.ensure_session(
+        session_id,
+        context=context,
+        alert_cooldown_seconds=alert_cooldown_seconds or 8,
+    )
     _enforce_session_analysis_rate(session_id, settings)
     analysis_context = _merge_context(session_store.get_context(session_id), context)
     analysis = await service.analyze_upload_safely(video, "video", analysis_context)
@@ -225,6 +252,7 @@ def analyze_session_video_url(
     settings: Settings = Depends(get_settings),
     service: RekaVisionService = Depends(get_reka_service),
 ):
+    session_store.ensure_session(session_id, context=request.context)
     _enforce_session_analysis_rate(session_id, settings)
     analysis_context = _merge_context(
         session_store.get_context(session_id),
@@ -234,6 +262,44 @@ def analyze_session_video_url(
         request.media_url,
         "video",
         analysis_context,
+    )
+    record = session_store.add_alert(session_id, analysis)
+    return _session_response(session_id, analysis, record)
+
+
+@router.post("/session/{session_id}/analyze/chunk", response_model=SessionAnalyzeResponse)
+async def analyze_session_chunk(
+    session_id: str,
+    chunk: UploadFile = File(...),
+    context: str | None = Form(default=None),
+    alert_cooldown_seconds: int | None = Form(default=None),
+    settings: Settings = Depends(get_settings),
+    service: RekaVisionService = Depends(get_reka_service),
+):
+    session_store.ensure_session(
+        session_id,
+        context=context,
+        alert_cooldown_seconds=alert_cooldown_seconds or 8,
+    )
+    _enforce_session_analysis_rate(session_id, settings)
+
+    contents = await chunk.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty chunk")
+
+    if len(contents) > settings.max_chunk_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Chunk is too large. Limit is {settings.max_chunk_bytes} bytes.",
+        )
+
+    content_type = _normalize_video_content_type(chunk.content_type or "video/webm")
+    analysis_context = _merge_context(session_store.get_context(session_id), context)
+    analysis = service.analyze_bytes_safely(
+        contents=contents,
+        content_type=content_type,
+        source_type="video",
+        context=analysis_context,
     )
     record = session_store.add_alert(session_id, analysis)
     return _session_response(session_id, analysis, record)
@@ -282,13 +348,19 @@ def get_media_chunk_status(session_id: str):
 def analyze_reconstructed_media(
     session_id: str,
     context: str | None = Form(default=None),
+    alert_cooldown_seconds: int | None = Form(default=None),
     settings: Settings = Depends(get_settings),
     service: RekaVisionService = Depends(get_reka_service),
 ):
+    session_store.ensure_session(
+        session_id,
+        context=context,
+        alert_cooldown_seconds=alert_cooldown_seconds or 8,
+    )
     _enforce_session_analysis_rate(session_id, settings)
-    contents, content_type = media_chunk_store.reconstruct(session_id)
+    contents, content_type = media_chunk_store.reconstruct_latest(session_id)
     if not contents:
-        raise HTTPException(status_code=400, detail="No contiguous media chunks found.")
+        raise HTTPException(status_code=400, detail="No media chunks found.")
 
     analysis_context = _merge_context(session_store.get_context(session_id), context)
     analysis = service.analyze_bytes_safely(
@@ -298,6 +370,7 @@ def analyze_reconstructed_media(
         context=analysis_context,
     )
     record = session_store.add_alert(session_id, analysis)
+    media_chunk_store.clear_session(session_id)
     return _session_response(session_id, analysis, record)
 
 
@@ -322,7 +395,9 @@ def _session_response(
     return SessionAnalyzeResponse(
         source_type=analysis.source_type,
         alert=analysis.alert,
+        timeline=analysis.timeline,
         raw_model_text=analysis.raw_model_text,
+        analysis_mode=analysis.analysis_mode,
         session_id=session_id,
         alert_id=record.alert_id,
         should_speak=record.should_speak,

@@ -86,10 +86,27 @@ class HazardAlert(BaseModel):
     detected_objects: list[str] = Field(default_factory=list)
 
 
+class VideoTimelineItem(BaseModel):
+    timestamp_seconds: float = Field(..., ge=0)
+    danger_level: DangerLevel
+    confidence: float = Field(..., ge=0, le=1)
+    summary: str
+    spoken_alert: str
+    recommended_action: str
+    hazards: list[str] = Field(default_factory=list)
+    safe_path: str | None = None
+    detected_objects: list[str] = Field(default_factory=list)
+
+
+AnalysisMode = Literal["reka", "fallback"]
+
+
 class AnalyzeResponse(BaseModel):
     source_type: Literal["image", "video"]
     alert: HazardAlert
+    timeline: list[VideoTimelineItem] = Field(default_factory=list)
     raw_model_text: str | None = None
+    analysis_mode: AnalysisMode = "reka"
 
 
 class SessionStartRequest(BaseModel):

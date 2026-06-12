@@ -11,6 +11,7 @@
 export const CHUNK_UPLOAD_ENDPOINT = '/api/media/chunk'
 
 export const CHUNK_INTERVAL_MS = 2500
+export const CHUNK_DURATION_MS = CHUNK_INTERVAL_MS
 
 export const CAPTURE_MODE_VIDEO_CHUNK = 'video_chunk'
 

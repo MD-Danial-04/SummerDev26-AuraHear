@@ -72,6 +72,18 @@ class MediaChunkStore:
         )
         return contents, first_chunk.content_type
 
+    def reconstruct_latest(self, session_id: str) -> tuple[bytes, str]:
+        session_chunks = self.chunks.get(session_id, {})
+        if not session_chunks:
+            return b"", ""
+
+        latest_sequence = max(session_chunks)
+        latest_chunk = session_chunks[latest_sequence]
+        return latest_chunk.contents, latest_chunk.content_type
+
+    def clear_session(self, session_id: str) -> None:
+        self.chunks.pop(session_id, None)
+
     def _contiguous_sequences(
         self,
         session_chunks: dict[int, MediaChunk],

@@ -2,8 +2,13 @@ import unittest
 
 from fastapi import HTTPException
 
+from app.models import AnalyzeResponse, HazardAlert
 from app.config import Settings
-from app.services.reka_vision import RekaVisionService, _parse_alert
+from app.services.reka_vision import (
+    ExtractedVideoFrame,
+    RekaVisionService,
+    _parse_alert,
+)
 
 
 class RekaVisionTests(unittest.TestCase):
@@ -24,6 +29,32 @@ class RekaVisionTests(unittest.TestCase):
         self.assertEqual(alert.confidence, 1.0)
         self.assertEqual(alert.hazards, [])
         self.assertEqual(alert.detected_objects, [])
+
+    def test_parse_alert_accepts_json_wrapped_in_prose(self):
+        alert = _parse_alert(
+            """
+            Here is the safety analysis:
+
+            ```json
+            {
+              "danger_level": "medium",
+              "confidence": 0.7,
+              "summary": "A cyclist is approaching from the left.",
+              "spoken_alert": "Cyclist left. Slow down.",
+              "recommended_action": "Slow down and give space.",
+              "hazards": ["cyclist"],
+              "safe_path": "Keep slightly right.",
+              "detected_objects": ["cyclist", "sidewalk"]
+            }
+            ```
+
+            Responding in the requested format.
+            """
+        )
+
+        self.assertEqual(alert.danger_level, "medium")
+        self.assertEqual(alert.spoken_alert, "Cyclist left. Slow down.")
+        self.assertEqual(alert.safe_path, "Keep slightly right.")
 
     def test_parse_alert_rejects_invalid_danger_level(self):
         with self.assertRaises(HTTPException) as exc:
@@ -53,6 +84,215 @@ class RekaVisionTests(unittest.TestCase):
 
         self.assertEqual(response.alert.danger_level, "medium")
         self.assertEqual(response.alert.spoken_alert, "Analysis unavailable. Stop and rescan.")
+        self.assertIsNone(response.raw_model_text)
+        self.assertEqual(response.analysis_mode, "fallback")
+
+    def test_video_analysis_repairs_non_json_response(self):
+        settings = Settings()
+        service = RekaVisionService(settings)
+        service.client = _StubClient(
+            [
+                "The user is near traffic. A bus is approaching and the safest action is to stop.",
+                """
+                {
+                  "danger_level": "high",
+                  "confidence": 0.84,
+                  "summary": "A bus is approaching the crossing.",
+                  "spoken_alert": "Bus ahead. Stop.",
+                  "recommended_action": "Stop and wait before crossing.",
+                  "hazards": ["bus", "traffic"],
+                  "safe_path": null,
+                  "detected_objects": ["bus", "street"]
+                }
+                """,
+            ]
+        )
+
+        response = service.analyze_media_url(
+            "https://example.com/video.mp4",
+            "video",
+        )
+
+        self.assertEqual(response.alert.danger_level, "high")
+        self.assertEqual(response.alert.recommended_action, "Stop and wait before crossing.")
+        self.assertIn('"danger_level": "high"', response.raw_model_text)
+
+    def test_video_analysis_uses_sampled_frames_and_merges_results(self):
+        settings = Settings()
+        service = _FrameSamplingService(settings)
+
+        response = service.analyze_bytes(
+            b"video-bytes",
+            "video/mp4",
+            "video",
+        )
+
+        self.assertEqual(response.source_type, "video")
+        self.assertEqual(response.alert.danger_level, "high")
+        self.assertEqual(response.alert.spoken_alert, "Bus ahead. Stop.")
+        self.assertEqual(
+            response.alert.recommended_action,
+            "Stop and wait before crossing.",
+        )
+        self.assertEqual(len(response.timeline), 2)
+        self.assertEqual(response.timeline[0].timestamp_seconds, 0.0)
+        self.assertEqual(response.timeline[1].timestamp_seconds, 10.0)
+        self.assertEqual(
+            response.timeline[1].recommended_action,
+            "Stop and wait before crossing.",
+        )
+        self.assertIn("bus", response.alert.hazards)
+        self.assertIn("wet road", response.alert.hazards)
+        self.assertIn(
+            "Most urgent sampled moment around 10.0s.",
+            response.alert.summary,
+        )
+        self.assertIn('"video_analysis_mode": "sampled_frames"', response.raw_model_text)
+        self.assertIn('"headline_timestamp_seconds": 10.0', response.raw_model_text)
+
+    def test_video_analysis_prefers_more_urgent_action_when_severity_matches(self):
+        settings = Settings()
+        service = _UrgencySamplingService(settings)
+
+        response = service.analyze_bytes(
+            b"video-bytes",
+            "video/mp4",
+            "video",
+        )
+
+        self.assertEqual(response.alert.danger_level, "medium")
+        self.assertEqual(response.alert.spoken_alert, "Taxi close. Stop.")
+        self.assertEqual(response.alert.recommended_action, "Stop and wait for traffic.")
+        self.assertEqual(response.timeline[1].timestamp_seconds, 6.0)
+        self.assertIn("taxi", response.alert.hazards)
+
+
+class _StubClient:
+    def __init__(self, contents):
+        self.chat = _StubChat(contents)
+
+
+class _StubChat:
+    def __init__(self, contents):
+        self.completions = _StubCompletions(contents)
+
+
+class _StubCompletions:
+    def __init__(self, contents):
+        self._contents = list(contents)
+
+    def create(self, **_kwargs):
+        content = self._contents.pop(0)
+        return _StubResponse(content)
+
+
+class _StubResponse:
+    def __init__(self, content):
+        self.choices = [_StubChoice(content)]
+
+
+class _StubChoice:
+    def __init__(self, content):
+        self.message = _StubMessage(content)
+
+
+class _StubMessage:
+    def __init__(self, content):
+        self.content = content
+
+
+class _FrameSamplingService(RekaVisionService):
+    def _extract_video_frames(self, _contents, _content_type):
+        return [
+            ExtractedVideoFrame(
+                timestamp_seconds=0.0,
+                content_type="image/jpeg",
+                contents=b"frame-1",
+            ),
+            ExtractedVideoFrame(
+                timestamp_seconds=10.0,
+                content_type="image/jpeg",
+                contents=b"frame-2",
+            ),
+        ]
+
+    def _analyze_extracted_frame(self, frame, _context=None):
+        if frame.timestamp_seconds == 0.0:
+            return AnalyzeResponse(
+                source_type="image",
+                alert=HazardAlert(
+                    danger_level="low",
+                    confidence=0.7,
+                    summary="User is on the sidewalk near a bus stop.",
+                    spoken_alert="Bus approaching, stay alert.",
+                    recommended_action="Continue walking, but stay aware of the bus.",
+                    hazards=["bus"],
+                    safe_path="Sidewalk to the right.",
+                    detected_objects=["bus", "sidewalk"],
+                ),
+                raw_model_text='{"danger_level":"low"}',
+            )
+
+        return AnalyzeResponse(
+            source_type="image",
+            alert=HazardAlert(
+                danger_level="high",
+                confidence=0.91,
+                summary="User is entering a busy crossing with a bus approaching.",
+                spoken_alert="Bus ahead. Stop.",
+                recommended_action="Stop and wait before crossing.",
+                hazards=["bus", "wet road"],
+                safe_path=None,
+                detected_objects=["bus", "street"],
+            ),
+            raw_model_text='{"danger_level":"high"}',
+        )
+
+
+class _UrgencySamplingService(RekaVisionService):
+    def _extract_video_frames(self, _contents, _content_type):
+        return [
+            ExtractedVideoFrame(
+                timestamp_seconds=0.0,
+                content_type="image/jpeg",
+                contents=b"frame-a",
+            ),
+            ExtractedVideoFrame(
+                timestamp_seconds=6.0,
+                content_type="image/jpeg",
+                contents=b"frame-b",
+            ),
+        ]
+
+    def _analyze_extracted_frame(self, frame, _context=None):
+        if frame.timestamp_seconds == 0.0:
+            return AnalyzeResponse(
+                source_type="image",
+                alert=HazardAlert(
+                    danger_level="medium",
+                    confidence=0.82,
+                    summary="User is near a crossing with light traffic.",
+                    spoken_alert="Crosswalk ahead, stay alert.",
+                    recommended_action="Prepare to cross carefully.",
+                    hazards=["crosswalk"],
+                    safe_path="Stay on the sidewalk edge.",
+                    detected_objects=["crosswalk", "sidewalk"],
+                ),
+            )
+
+        return AnalyzeResponse(
+            source_type="image",
+            alert=HazardAlert(
+                danger_level="medium",
+                confidence=0.82,
+                summary="Taxi is entering the user's path at the crossing.",
+                spoken_alert="Taxi close. Stop.",
+                recommended_action="Stop and wait for traffic.",
+                hazards=["taxi", "crosswalk"],
+                safe_path=None,
+                detected_objects=["taxi", "crosswalk"],
+            ),
+        )
 
 
 if __name__ == "__main__":

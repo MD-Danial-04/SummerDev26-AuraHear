@@ -91,6 +91,28 @@ class SessionStore:
     def get_context(self, session_id: str) -> str | None:
         return self._get_session(session_id).context
 
+    def ensure_session(
+        self,
+        session_id: str,
+        context: str | None = None,
+        alert_cooldown_seconds: int = 8,
+    ) -> SessionState:
+        """Create session state if missing (serverless-safe lazy registration)."""
+        session = self.sessions.get(session_id)
+        if session is None:
+            session = SessionState(
+                session_id=session_id,
+                started_at=datetime.now(UTC),
+                context=context,
+                alert_cooldown_seconds=alert_cooldown_seconds,
+            )
+            self.sessions[session_id] = session
+            return session
+
+        if context:
+            session.context = _merge_context_strings(session.context, context)
+        return session
+
     def enforce_analysis_rate(
         self,
         session_id: str,
@@ -167,6 +189,14 @@ def _alert_signature(analysis: AnalyzeResponse) -> str:
 
 def _format_time(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
+
+
+def _merge_context_strings(
+    session_context: str | None,
+    request_context: str | None,
+) -> str | None:
+    contexts = [context for context in [session_context, request_context] if context]
+    return " ".join(contexts) if contexts else None
 
 
 session_store = SessionStore()
