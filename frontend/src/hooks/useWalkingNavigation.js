@@ -13,14 +13,59 @@ import {
   NAV_STEP_ADVANCE_METERS,
 } from '../utils/geo.js'
 
+const BLOCKED_PATH_KEYWORDS = [
+  'blocked path',
+  'obstacle',
+  'wall',
+  'barrier',
+  'bollard',
+  'pole',
+  'construction',
+  'fence',
+  'closed door',
+  'gate',
+  'bin',
+  'chair',
+  'table',
+]
+
 /**
- * @param {{ should_speak?: boolean, alert?: { danger_level?: string } }} result
+ * @param {{ should_speak?: boolean, alert?: {
+ *   danger_level?: string,
+ *   hazards?: string[],
+ *   detected_objects?: string[],
+ *   summary?: string,
+ *   recommended_action?: string,
+ *   safe_path?: string | null,
+ * } }} result
  * @returns {boolean}
  */
 function shouldHazardReroute(result) {
   if (!result?.should_speak) return false
-  const level = result.alert?.danger_level
-  return level === 'medium' || level === 'high' || level === 'critical'
+
+  const alert = result.alert ?? {}
+  const level = alert.danger_level
+  if (level === 'medium' || level === 'high' || level === 'critical') {
+    return true
+  }
+
+  const combinedText = [
+    ...(alert.hazards ?? []),
+    ...(alert.detected_objects ?? []),
+    alert.summary ?? '',
+    alert.recommended_action ?? '',
+  ]
+    .join(' ')
+    .toLowerCase()
+
+  const mentionsBlockedPath = BLOCKED_PATH_KEYWORDS.some((keyword) =>
+    combinedText.includes(keyword),
+  )
+  if (!mentionsBlockedPath) return false
+
+  if (!alert.safe_path) return true
+
+  return alert.safe_path.toLowerCase().includes('avoid')
 }
 
 /**
