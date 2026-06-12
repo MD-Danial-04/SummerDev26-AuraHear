@@ -34,7 +34,7 @@ API runs at http://localhost:8000.
 - `REKA_BASE_URL`: defaults to `https://api.reka.ai/v1`
 - `OSM_NOMINATIM_BASE_URL`: defaults to `https://nominatim.openstreetmap.org`
 - `OSM_ROUTING_BASE_URL`: defaults to `https://router.project-osrm.org`
-- `OSM_USER_AGENT`: user-agent sent to OpenStreetMap-compatible services
+- `OSM_USER_AGENT`: user-agent sent to OpenStreetMap-compatible services. **Set a real contact on Vercel**, e.g. `AuraHear/1.0 (contact: you@email.com)`. The default placeholder is not suitable for production.
 - `CORS_ORIGINS`: comma-separated frontend origins, defaults to `http://localhost:5173`
 - `MAX_UPLOAD_BYTES`: max full image/video analysis upload size, defaults to `8388608`
 - `MAX_CHUNK_BYTES`: max single media chunk size, defaults to `3145728`
@@ -43,9 +43,11 @@ API runs at http://localhost:8000.
 
 ## Health
 
-- `GET /api/health`: returns backend status, `ffmpeg_available`, `ffprobe_available`, and `reka_configured`
+- `GET /api/health`: returns backend status, `ffmpeg_available`, `ffprobe_available`, `reka_configured`, and `osm_user_agent_configured`
 
 ## Navigation
+
+Singapore-only walking navigation via Nominatim geocode (`countrycodes=sg`) and OSRM routing. Coordinates outside Singapore bounds are rejected.
 
 - `POST /api/navigation/geocode`: looks up an address or landmark and returns candidate coordinates
 - `POST /api/navigation/route`: returns a walking route with path coordinates and spoken turn-by-turn instructions

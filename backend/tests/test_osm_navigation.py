@@ -2,6 +2,8 @@ import json
 import unittest
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 from app.config import Settings
 from app.models import NavigationRouteRequest
 from app.services.osm_navigation import OSMNavigationService
@@ -51,6 +53,74 @@ class OSMNavigationTests(unittest.TestCase):
         self.assertEqual(len(response.results), 1)
         self.assertEqual(response.results[0].name, "Marina Bay Sands, Singapore")
         self.assertAlmostEqual(response.results[0].lat, 1.2834)
+
+    @patch("app.services.osm_navigation.urlopen")
+    def test_geocode_filters_non_singapore_results(self, mock_urlopen):
+        mock_urlopen.return_value = _FakeResponse(
+            [
+                {
+                    "display_name": "Paris, France",
+                    "lat": "48.8566",
+                    "lon": "2.3522",
+                },
+                {
+                    "display_name": "Marina Bay Sands, Singapore",
+                    "lat": "1.2834",
+                    "lon": "103.8607",
+                },
+            ]
+        )
+
+        response = self.service.geocode("Marina Bay Sands", limit=5)
+
+        self.assertEqual(len(response.results), 1)
+        self.assertIn("Singapore", response.results[0].name)
+
+    @patch("app.services.osm_navigation.urlopen")
+    def test_geocode_raises_when_no_singapore_matches(self, mock_urlopen):
+        mock_urlopen.return_value = _FakeResponse(
+            [
+                {
+                    "display_name": "Paris, France",
+                    "lat": "48.8566",
+                    "lon": "2.3522",
+                }
+            ]
+        )
+
+        with self.assertRaises(HTTPException) as ctx:
+            self.service.geocode("Paris", limit=1)
+
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.assertIn("No Singapore matches", ctx.exception.detail)
+
+    def test_build_route_rejects_origin_outside_singapore(self):
+        request = NavigationRouteRequest.model_validate(
+            {
+                "origin": {"lat": 48.8566, "lon": 2.3522},
+                "destination": {"lat": 1.2840, "lon": 103.8612},
+            }
+        )
+
+        with self.assertRaises(HTTPException) as ctx:
+            self.service.build_route(request)
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("Origin", ctx.exception.detail)
+
+    def test_build_route_rejects_destination_outside_singapore(self):
+        request = NavigationRouteRequest.model_validate(
+            {
+                "origin": {"lat": 1.2834, "lon": 103.8607},
+                "destination": {"lat": 48.8566, "lon": 2.3522},
+            }
+        )
+
+        with self.assertRaises(HTTPException) as ctx:
+            self.service.build_route(request)
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("Destination", ctx.exception.detail)
 
     @patch("app.services.osm_navigation.urlopen")
     def test_build_route_returns_steps_and_path(self, mock_urlopen):

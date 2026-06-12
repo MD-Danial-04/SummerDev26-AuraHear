@@ -73,6 +73,7 @@ For live Reka frame analysis in production:
 1. In Vercel → Project → Settings → Environment Variables, add **`REKA_API_KEY`** to the **backend** service (Production and Preview).
 2. Optional: `REKA_MODEL` (default `reka-flash`), `CORS_ORIGINS` if calling the API cross-origin.
 3. Redeploy after saving env vars — existing deployments do not pick up new variables automatically.
+4. For Singapore navigation geocoding, set **`OSM_USER_AGENT`** on the backend to a real contact string, e.g. `AuraHear/1.0 (contact: you@email.com)`. Check `GET /api/health` for `osm_user_agent_configured: true`.
 
 Verify after deploy:
 

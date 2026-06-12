@@ -2,10 +2,38 @@ export const NAVIGATION_GEOCODE_ENDPOINT = '/api/navigation/geocode'
 export const NAVIGATION_ROUTE_ENDPOINT = '/api/navigation/route'
 
 /**
- * @param {string} query
- * @param {{ limit?: number }} [options]
+ * @param {string} detail
+ * @returns {string}
  */
-export async function geocodeLocation(query, { limit = 1 } = {}) {
+function formatApiError(detail) {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail.map((item) => item.msg ?? String(item)).join(' ')
+  }
+  return 'Navigation request failed.'
+}
+
+/**
+ * @param {Response} response
+ * @returns {Promise<never>}
+ */
+async function throwNavigationError(response) {
+  const payload = await response.json().catch(() => null)
+  const detail = payload?.detail ?? `Navigation request failed (${response.status}).`
+  throw new Error(formatApiError(detail))
+}
+
+/**
+ * @param {string} query
+ * @param {number | { limit?: number }} [limitOrOptions]
+ * @returns {Promise<{ query: string, results: Array<{ name: string, lat: number, lon: number }> }>}
+ */
+export async function geocodeLocation(query, limitOrOptions = 5) {
+  const limit =
+    typeof limitOrOptions === 'object'
+      ? (limitOrOptions.limit ?? 5)
+      : limitOrOptions
+
   const response = await fetch(NAVIGATION_GEOCODE_ENDPOINT, {
     method: 'POST',
     headers: {
@@ -15,17 +43,11 @@ export async function geocodeLocation(query, { limit = 1 } = {}) {
     body: JSON.stringify({ query, limit }),
   })
 
-  const payload = await response.json().catch(() => null)
   if (!response.ok) {
-    const detail =
-      payload?.detail ??
-      (payload === null
-        ? `Navigation service unreachable (${response.status}).`
-        : 'Failed to geocode destination.')
-    throw new Error(typeof detail === 'string' ? detail : 'Failed to geocode destination.')
+    await throwNavigationError(response)
   }
 
-  return payload
+  return response.json()
 }
 
 /**
@@ -34,70 +56,41 @@ export async function geocodeLocation(query, { limit = 1 } = {}) {
  *   destination: { lat: number, lon: number },
  *   originName?: string | null,
  *   destinationName?: string | null,
- * }} request
+ * }} params
  */
-export async function buildNavigationRoute(request) {
+export async function buildWalkingRoute({
+  origin,
+  destination,
+  originName,
+  destinationName,
+}) {
   const response = await fetch(NAVIGATION_ROUTE_ENDPOINT, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
-    body: JSON.stringify(request),
+    body: JSON.stringify({
+      origin,
+      destination,
+      origin_name: originName ?? null,
+      destination_name: destinationName ?? null,
+    }),
   })
 
-  const payload = await response.json().catch(() => null)
   if (!response.ok) {
-    const detail =
-      payload?.detail ??
-      (payload === null
-        ? `Routing service unreachable (${response.status}).`
-        : 'Failed to build route.')
-    throw new Error(typeof detail === 'string' ? detail : 'Failed to build route.')
+    await throwNavigationError(response)
   }
 
-  return payload
+  return response.json()
 }
 
-/**
- * @param {{ enableHighAccuracy?: boolean, timeout?: number, maximumAge?: number }} [options]
- * @returns {Promise<{ lat: number, lon: number }>}
- */
-export function getCurrentCoordinates({
-  enableHighAccuracy = true,
-  timeout = 10000,
-  maximumAge = 15000,
-} = {}) {
-  if (typeof window === 'undefined' || !navigator.geolocation) {
-    return Promise.reject(new Error('Location is not supported on this device.'))
-  }
-
-  return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        resolve({
-          lat: position.coords.latitude,
-          lon: position.coords.longitude,
-        })
-      },
-      (error) => {
-        if (error.code === error.PERMISSION_DENIED) {
-          reject(new Error('Location permission was denied.'))
-          return
-        }
-
-        if (error.code === error.TIMEOUT) {
-          reject(new Error('Timed out while finding your location.'))
-          return
-        }
-
-        reject(new Error('Could not determine your current location.'))
-      },
-      {
-        enableHighAccuracy,
-        timeout,
-        maximumAge,
-      },
-    )
+/** Alias used by earlier main-branch integrations. */
+export async function buildNavigationRoute(request) {
+  return buildWalkingRoute({
+    origin: request.origin,
+    destination: request.destination,
+    originName: request.originName ?? request.origin_name ?? null,
+    destinationName: request.destinationName ?? request.destination_name ?? null,
   })
 }

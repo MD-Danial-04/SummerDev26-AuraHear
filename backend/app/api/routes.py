@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
 import shutil
 
-from app.config import Settings, get_settings
+from app.config import Settings, get_settings, is_osm_user_agent_configured
 from app.models import (
     AnalyzeResponse,
     GeocodeRequest,
@@ -50,6 +50,9 @@ def health(settings: Settings = Depends(get_settings)):
         "ffmpeg_available": shutil.which("ffmpeg") is not None,
         "ffprobe_available": shutil.which("ffprobe") is not None,
         "reka_configured": bool(settings.reka_api_key),
+        "osm_user_agent_configured": is_osm_user_agent_configured(
+            settings.osm_user_agent
+        ),
     }
 
 
