@@ -59,6 +59,8 @@ export function NavigationPage() {
     ensureCaptureForNavigation,
     registerNavSpeechResume,
     unregisterNavSpeechResume,
+    registerNavHazardReroute,
+    unregisterNavHazardReroute,
   } = useApp()
 
   const [destination, setDestination] = useState('')
@@ -98,6 +100,7 @@ export function NavigationPage() {
     nextCandidate,
     cancelRoute,
     repeatCurrentStep,
+    handleHazardDuringNav,
   } = navigation
 
   useEffect(() => {
@@ -105,9 +108,20 @@ export function NavigationPage() {
   }, [status])
 
   useEffect(() => {
+    registerNavHazardReroute(handleHazardDuringNav)
     registerNavSpeechResume(repeatCurrentStep)
-    return () => unregisterNavSpeechResume()
-  }, [registerNavSpeechResume, unregisterNavSpeechResume, repeatCurrentStep])
+    return () => {
+      unregisterNavHazardReroute()
+      unregisterNavSpeechResume()
+    }
+  }, [
+    handleHazardDuringNav,
+    registerNavHazardReroute,
+    registerNavSpeechResume,
+    repeatCurrentStep,
+    unregisterNavHazardReroute,
+    unregisterNavSpeechResume,
+  ])
 
   useEffect(() => {
     if (liveLocation.status === 'idle') {
