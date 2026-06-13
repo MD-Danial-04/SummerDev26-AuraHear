@@ -22,7 +22,7 @@ export function WalkingPageHints({ colors, fontSize, hazardMapEnabled }) {
             transform: 'rotate(180deg)',
           }}
         >
-          NAVIGATE
+          SETTINGS
         </span>
       </div>
       <div className="absolute right-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 pr-3 pointer-events-none">
@@ -35,24 +35,25 @@ export function WalkingPageHints({ colors, fontSize, hazardMapEnabled }) {
             writingMode: 'vertical-rl',
           }}
         >
-          SETTINGS
+          NAVIGATE
         </span>
       </div>
 
       <div
-        className="absolute bottom-0 inset-x-0 flex justify-between items-center px-5 py-3 pointer-events-none"
+        className="absolute bottom-0 inset-x-0 grid grid-cols-3 items-center px-5 py-3 pointer-events-none"
         style={{ backgroundColor: withAlpha(colors.background, 0.6) }}
       >
         <span
+          className="justify-self-start"
           style={{
             color: colors.text,
             fontSize: scaleRem(0.9, fontSize),
             letterSpacing: '0.06em',
           }}
         >
-          NAVIGATE ⟵
+          SETTINGS ⟵
         </span>
-        <div className="flex flex-col items-center gap-0.5">
+        <div className="justify-self-center flex flex-col items-center gap-0.5">
           <span
             style={{
               color: colors.text,
@@ -75,13 +76,14 @@ export function WalkingPageHints({ colors, fontSize, hazardMapEnabled }) {
           )}
         </div>
         <span
+          className="justify-self-end"
           style={{
             color: colors.text,
             fontSize: scaleRem(0.9, fontSize),
             letterSpacing: '0.06em',
           }}
         >
-          SETTINGS ⟶
+          NAVIGATE ⟶
         </span>
       </div>
     </>

@@ -37,6 +37,22 @@ const THEME_FG = {
   'green-on-black': '#00FF00',
 }
 
+const CONTROL_ZONE_X_MIN = 0.40
+const CONTROL_ZONE_X_MAX = 0.60
+const CONTROL_ZONE_Y_MIN = 0.32
+const CONTROL_ZONE_Y_MAX = 0.68
+
+function isInControlZone(x, y, width, height) {
+  const zoneX = x / width
+  const zoneY = y / height
+  return (
+    zoneX > CONTROL_ZONE_X_MIN &&
+    zoneX < CONTROL_ZONE_X_MAX &&
+    zoneY > CONTROL_ZONE_Y_MIN &&
+    zoneY < CONTROL_ZONE_Y_MAX
+  )
+}
+
 const PAGES = [
   { key: 'colorTheme', label: 'COLOUR THEME', type: 'cycle', options: COLOR_THEMES },
   {
@@ -177,7 +193,7 @@ export function SettingsPage() {
     const t = setTimeout(
       () =>
         announce(
-          'Settings. Swipe left or right to change setting. Swipe up to increase. Swipe down for home.',
+          'Settings. Swipe left or right to change setting. Swipe up or down in the centre box to adjust. Swipe down elsewhere for home.',
         ),
       300,
     )
@@ -266,19 +282,22 @@ export function SettingsPage() {
       const dist = Math.sqrt(dx * dx + dy * dy)
       const duration = Date.now() - startTime
       const W = el.clientWidth
+      const H = el.clientHeight
+      const inControlZone = isInControlZone(startX, startY, W, H)
 
       if (isHorizontalSwipe(dx, dy, duration)) {
         if (dx < 0) goNext()
         else goPrev()
       } else if (absDy > 90 && absDy > absDx * 2) {
-        if (dy > 0) {
-          feedback.buttonPress()
-          navigate('/')
-        } else {
-          const zone = startX / W
-          if (zone > 0.25 && zone < 0.75 && page.type !== 'panel') {
+        if (dy < 0) {
+          if (inControlZone && page.type !== 'panel') {
             increaseValue()
           }
+        } else if (inControlZone && page.type !== 'panel') {
+          decreaseValue()
+        } else {
+          feedback.buttonPress()
+          navigate('/')
         }
       } else if (dist < 22 && duration < 350) {
         const zone = startX / W
@@ -305,6 +324,7 @@ export function SettingsPage() {
     goPrev,
     goNext,
     increaseValue,
+    decreaseValue,
     page.type,
     feedback,
   ])
@@ -381,10 +401,10 @@ export function SettingsPage() {
         <div
           className="flex flex-col items-center justify-center rounded-3xl"
           style={{
-            width: '72vw',
-            maxWidth: 360,
-            height: '28vw',
-            maxHeight: 140,
+            width: '50vw',
+            maxWidth: 280,
+            height: '20vw',
+            maxHeight: 100,
             backgroundColor: THEME_BG[themeKey],
             border: `4px solid ${THEME_FG[themeKey]}`,
           }}
@@ -411,11 +431,11 @@ export function SettingsPage() {
       return (
         <div
           className="flex flex-col items-center gap-4"
-          style={{ width: '72vw', maxWidth: 340 }}
+          style={{ width: '50vw', maxWidth: 260 }}
         >
           <span
             style={{
-              fontSize: 'clamp(3rem, 14vw, 6rem)',
+              fontSize: 'clamp(2.5rem, 10vw, 4.5rem)',
               fontWeight: 900,
               color: colors.accent,
               lineHeight: 1,
@@ -485,7 +505,7 @@ export function SettingsPage() {
         touchAction: 'none',
         userSelect: 'none',
       }}
-      aria-label={`Settings, page ${pageIdx + 1} of ${totalPages}: ${page.label}. Tap left or right for previous or next setting. Swipe left or right to change setting page. Swipe up to increase value. Swipe down for Home.`}
+      aria-label={`Settings, page ${pageIdx + 1} of ${totalPages}: ${page.label}. Tap left or right for previous or next setting. Swipe left or right to change setting page. Swipe up or down in the centre box to adjust value. Swipe down elsewhere for Home.`}
     >
       <div
         className="absolute left-0 top-0 bottom-0 flex items-center justify-center"
@@ -532,11 +552,19 @@ export function SettingsPage() {
         {renderValue()}
 
         {page.type !== 'toggle' && page.type !== 'panel' && (
-          <div className="flex flex-col items-center gap-0">
-            <span style={{ color: colors.text, fontSize: '1.2rem', lineHeight: 1 }}>↑</span>
-            <span style={{ color: colors.text, fontSize: scaleRem(0.85, fontSize), letterSpacing: '0.1em' }}>
-              SWIPE TO INCREASE
-            </span>
+          <div className="flex flex-col items-center gap-1">
+            <div className="flex flex-col items-center gap-0">
+              <span style={{ color: colors.text, fontSize: '1.2rem', lineHeight: 1 }}>↑</span>
+              <span style={{ color: colors.text, fontSize: scaleRem(0.85, fontSize), letterSpacing: '0.1em' }}>
+                INCREASE
+              </span>
+            </div>
+            <div className="flex flex-col items-center gap-0">
+              <span style={{ color: colors.text, fontSize: '1.2rem', lineHeight: 1 }}>↓</span>
+              <span style={{ color: colors.text, fontSize: scaleRem(0.85, fontSize), letterSpacing: '0.1em' }}>
+                DECREASE
+              </span>
+            </div>
           </div>
         )}
         {page.type === 'toggle' && (

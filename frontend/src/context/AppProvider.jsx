@@ -55,6 +55,44 @@ const THEME_NAMES = {
 const LIVE_ANALYSIS_CONTEXT =
   'User is walking forward and needs immediate spoken warnings for hazards or obstacles directly in the path within the next 1 to 2 steps. Warn about walls, closed doors, poles, bollards, bins, chairs, tables, barriers, curbs, stairs, drops, and blocked sidewalks or corridors.'
 
+const HAZARD_SPEECH_COOLDOWN_MS = 8000
+
+const DANGER_RANK = {
+  none: 0,
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+}
+
+function hazardCategory(alert) {
+  const hazards = [...(alert?.hazards ?? [])].map((h) => h.toLowerCase()).sort().join(',')
+  return `${alert?.danger_level ?? 'none'}|${hazards}`
+}
+
+function dangerRank(dangerLevel) {
+  return DANGER_RANK[dangerLevel] ?? 0
+}
+
+function shouldSpeakHazardNow(alert, lastSpoken, now = Date.now()) {
+  const category = hazardCategory(alert)
+  const rank = dangerRank(alert.danger_level)
+
+  if (!lastSpoken.category) {
+    return true
+  }
+
+  if (category !== lastSpoken.category) {
+    return true
+  }
+
+  if (rank > lastSpoken.rank) {
+    return true
+  }
+
+  return now - lastSpoken.at >= HAZARD_SPEECH_COOLDOWN_MS
+}
+
 function toThreatSeverity(dangerLevel) {
   if (dangerLevel === 'critical') return 'critical'
   if (dangerLevel === 'high') return 'high'
@@ -100,6 +138,7 @@ function useAppState(videoRef) {
     speechState: 'idle',
     error: null,
   })
+  const lastSpokenHazardRef = useRef({ category: null, rank: 0, at: 0 })
 
   const { theme, setTheme, colors } = useColorTheme(persisted.colorTheme)
   const feedback = useInteractionFeedback()
@@ -242,7 +281,7 @@ function useAppState(videoRef) {
     ensureCaptureForNavigation,
   })
 
-  const { handleHazardDuringNav, repeatCurrentStep } = navigation
+  const { handleHazardDuringNav } = navigation
 
   const handleStart = useCallback(async () => {
     if (!active) {
@@ -364,6 +403,17 @@ function useAppState(videoRef) {
       return
     }
 
+    const now = Date.now()
+    if (!shouldSpeakHazardNow(result.alert, lastSpokenHazardRef.current, now)) {
+      return
+    }
+
+    lastSpokenHazardRef.current = {
+      category: hazardCategory(result.alert),
+      rank: dangerRank(result.alert.danger_level),
+      at: now,
+    }
+
     vibrateForSeverity(severity)
     stopCurrentAudio()
     cancelSpeech()
@@ -375,14 +425,12 @@ function useAppState(videoRef) {
     }).then((speechResult) => {
       setLastSpeechSource(speechResult.ok ? 'system-tts' : 'idle')
       handleHazardDuringNav(result)
-      repeatCurrentStep()
     })
 
     showToast(result.alert.recommended_action)
   }, [
     frameAnalysis.latestResult,
     handleHazardDuringNav,
-    repeatCurrentStep,
     showToast,
     speechRate,
     volume,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { HazardLegend } from '../components/map/HazardLegend.jsx'
@@ -14,7 +14,6 @@ export function AuthorityMapPage() {
   const navigate = useNavigate()
   const { colors, fontSize, feedback } = useApp()
   const announce = useAnnounce()
-  const containerRef = useRef(null)
 
   const hazards = useMemo(() => parseHazardFeatures(sampleHazards), [])
   const [selectedId, setSelectedId] = useState(null)
@@ -27,37 +26,6 @@ export function AuthorityMapPage() {
     return () => clearTimeout(t)
   }, [announce, hazards.length])
 
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-
-    let startX = 0
-    let startY = 0
-
-    const onTouchStart = (e) => {
-      startX = e.touches[0].clientX
-      startY = e.touches[0].clientY
-    }
-
-    const onTouchEnd = (e) => {
-      const dx = e.changedTouches[0].clientX - startX
-      const dy = e.changedTouches[0].clientY - startY
-      const absDx = Math.abs(dx)
-      const absDy = Math.abs(dy)
-      if (absDx > 70 && absDx > absDy * 1.5 && dx < 0) {
-        feedback.buttonPress()
-        navigate('/')
-      }
-    }
-
-    el.addEventListener('touchstart', onTouchStart, { passive: true })
-    el.addEventListener('touchend', onTouchEnd, { passive: true })
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart)
-      el.removeEventListener('touchend', onTouchEnd)
-    }
-  }, [navigate, feedback])
-
   const handleSelectHazard = useCallback((hazard) => {
     setSelectedId(hazard.id)
     setFlyToTarget({ lat: hazard.lat, lng: hazard.lng })
@@ -65,7 +33,6 @@ export function AuthorityMapPage() {
 
   return (
     <div
-      ref={containerRef}
       className="relative flex h-full min-h-0 flex-1 flex-col"
       style={{
         backgroundColor: colors.background,
@@ -74,12 +41,6 @@ export function AuthorityMapPage() {
         userSelect: 'none',
       }}
     >
-      <div className="absolute top-4 left-4 z-10 pointer-events-none">
-        <span style={{ color: colors.text, fontSize: '0.75rem', letterSpacing: '0.06em' }}>
-          ← Home
-        </span>
-      </div>
-
       <header
         className="flex shrink-0 items-center justify-between px-4 py-3 sm:px-6"
         style={{ borderBottom: `3px solid ${colors.border}` }}
