@@ -9,6 +9,7 @@ import { useInteractionFeedback } from '../hooks/useInteractionFeedback.js'
 import { useLiveFrameAnalysis } from '../hooks/useLiveFrameAnalysis.js'
 import { useLiveLocation } from '../hooks/useLiveLocation.js'
 import { useVoiceCommands } from '../hooks/useVoiceCommands.js'
+import { useWalkingNavigation } from '../hooks/useWalkingNavigation.js'
 import {
   isAudioPlaybackSupported,
   playTestAudio,
@@ -105,9 +106,16 @@ function useAppState(videoRef) {
   const camera = useCameraStream(videoRef)
   const frameAnalysis = useLiveFrameAnalysis(videoRef)
   const liveLocation = useLiveLocation()
-  const navSpeechResumeRef = useRef(null)
-  const navHazardRerouteRef = useRef(null)
   const cameraError = camera.error
+
+  const speakInstruction = useCallback(
+    async (text, onEnd) => {
+      stopCurrentAudio()
+      cancelSpeech()
+      await speakWarningAsync(text, { volume, rate: speechRate, onEnd })
+    },
+    [volume, speechRate],
+  )
 
   useEffect(() => {
     setAudioVolume(volume)
@@ -228,21 +236,13 @@ function useAppState(videoRef) {
     return startCapture()
   }, [active, liveLocation, startCapture])
 
-  const registerNavSpeechResume = useCallback((callback) => {
-    navSpeechResumeRef.current = callback
-  }, [])
+  const navigation = useWalkingNavigation({
+    liveLocation,
+    speak: speakInstruction,
+    ensureCaptureForNavigation,
+  })
 
-  const unregisterNavSpeechResume = useCallback(() => {
-    navSpeechResumeRef.current = null
-  }, [])
-
-  const registerNavHazardReroute = useCallback((callback) => {
-    navHazardRerouteRef.current = callback
-  }, [])
-
-  const unregisterNavHazardReroute = useCallback(() => {
-    navHazardRerouteRef.current = null
-  }, [])
+  const { handleHazardDuringNav, repeatCurrentStep } = navigation
 
   const handleStart = useCallback(async () => {
     if (!active) {
@@ -374,12 +374,19 @@ function useAppState(videoRef) {
       rate: speechRate,
     }).then((speechResult) => {
       setLastSpeechSource(speechResult.ok ? 'system-tts' : 'idle')
-      navHazardRerouteRef.current?.(result)
-      navSpeechResumeRef.current?.()
+      handleHazardDuringNav(result)
+      repeatCurrentStep()
     })
 
     showToast(result.alert.recommended_action)
-  }, [frameAnalysis.latestResult, showToast, speechRate, volume])
+  }, [
+    frameAnalysis.latestResult,
+    handleHazardDuringNav,
+    repeatCurrentStep,
+    showToast,
+    speechRate,
+    volume,
+  ])
 
   useEffect(() => {
     if (!frameAnalysis.error) return
@@ -466,10 +473,8 @@ function useAppState(videoRef) {
     handleTestSpeech,
     liveLocation,
     ensureCaptureForNavigation,
-    registerNavSpeechResume,
-    unregisterNavSpeechResume,
-    registerNavHazardReroute,
-    unregisterNavHazardReroute,
+    speakInstruction,
+    navigation,
     developerDetails: {
       colors,
       sessionId,
