@@ -4,13 +4,8 @@ import { useNavigate } from 'react-router'
 import { DeveloperDetails } from '../components/DeveloperDetails.jsx'
 import { useApp } from '../context/AppContext.js'
 import { useAnnounce } from '../hooks/useAnnounce.js'
-<<<<<<< HEAD
 import { scaleRem, scaleSize } from '../utils/scaleFont.js'
-import { horizontalSwipeDirection, isHorizontalSwipe } from '../utils/swipeGesture.js'
-=======
-import { scaleRem } from '../utils/scaleFont.js'
-import { isHorizontalSwipe, isVerticalSwipe } from '../utils/swipeGesture.js'
->>>>>>> 9e3f846 (fix: shit i commited on main)
+import { horizontalSwipeDirection, isHorizontalSwipe, isVerticalSwipe } from '../utils/swipeGesture.js'
 
 /** @typedef {import('../hooks/useColorTheme.js').ColorTheme} ColorTheme */
 
@@ -324,15 +319,9 @@ export function SettingsPage() {
       )
 
       if (isHorizontalSwipe(dx, dy, duration)) {
-<<<<<<< HEAD
         if (horizontalSwipeDirection(dx) === 'left') goPrev()
         else goNext()
-      } else if (absDy > 60 && absDy > absDx * 1.5) {
-=======
-        if (dx < 0) goNext()
-        else goPrev()
       } else if (isVerticalSwipe(dx, dy, duration)) {
->>>>>>> 9e3f846 (fix: shit i commited on main)
         if (dy < 0) {
           if (inAdjustZone && page.type !== 'panel') {
             increaseValue()
