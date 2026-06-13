@@ -29,11 +29,13 @@ export function isHorizontalSwipe(dx, dy, durationMs = 300) {
 }
 
 /**
+ * Maps finger travel to the content edge being revealed (drag metaphor).
+ * Drag right reveals left-side content; drag left reveals right-side content.
  * @param {number} dx
  * @returns {'left' | 'right' | null}
  */
 export function horizontalSwipeDirection(dx) {
-  if (dx < 0) return 'left'
-  if (dx > 0) return 'right'
+  if (dx < 0) return 'right'
+  if (dx > 0) return 'left'
   return null
 }

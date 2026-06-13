@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { DeveloperDetails } from '../components/DeveloperDetails.jsx'
 import { useApp } from '../context/AppContext.js'
 import { useAnnounce } from '../hooks/useAnnounce.js'
-import { scaleRem } from '../utils/scaleFont.js'
-import { isHorizontalSwipe } from '../utils/swipeGesture.js'
+import { scaleRem, scaleSize } from '../utils/scaleFont.js'
+import { horizontalSwipeDirection, isHorizontalSwipe } from '../utils/swipeGesture.js'
 
 /** @typedef {import('../hooks/useColorTheme.js').ColorTheme} ColorTheme */
 
@@ -37,19 +37,16 @@ const THEME_FG = {
   'green-on-black': '#00FF00',
 }
 
-const CONTROL_ZONE_X_MIN = 0.40
-const CONTROL_ZONE_X_MAX = 0.60
-const CONTROL_ZONE_Y_MIN = 0.32
-const CONTROL_ZONE_Y_MAX = 0.68
+const ADJUST_ZONE_PADDING_PX = 12
 
-function isInControlZone(x, y, width, height) {
-  const zoneX = x / width
-  const zoneY = y / height
+/** @param {number} x @param {number} y @param {DOMRect | null | undefined} rect */
+function isInAdjustZone(x, y, rect) {
+  if (!rect) return false
   return (
-    zoneX > CONTROL_ZONE_X_MIN &&
-    zoneX < CONTROL_ZONE_X_MAX &&
-    zoneY > CONTROL_ZONE_Y_MIN &&
-    zoneY < CONTROL_ZONE_Y_MAX
+    x >= rect.left - ADJUST_ZONE_PADDING_PX &&
+    x <= rect.right + ADJUST_ZONE_PADDING_PX &&
+    y >= rect.top - ADJUST_ZONE_PADDING_PX &&
+    y <= rect.bottom + ADJUST_ZONE_PADDING_PX
   )
 }
 
@@ -142,7 +139,9 @@ export function SettingsPage() {
   const announce = useAnnounce()
 
   const [pageIdx, setPageIdx] = useState(0)
+  const [zoneBorderRect, setZoneBorderRect] = useState(null)
   const containerRef = useRef(null)
+  const adjustZoneRef = useRef(null)
 
   const page = PAGES[pageIdx]
   const totalPages = PAGES.length
@@ -193,7 +192,7 @@ export function SettingsPage() {
     const t = setTimeout(
       () =>
         announce(
-          'Settings. Swipe left or right to change setting. Swipe up or down in the centre box to adjust. Swipe down elsewhere for home.',
+          'Settings. Swipe left or right to change setting. Swipe up or down on the setting panel to adjust. Swipe down outside the panel for home.',
         ),
       300,
     )
@@ -254,6 +253,39 @@ export function SettingsPage() {
     }
   }, [pageIdx, settings, update, feedback])
 
+  const updateZoneBorder = useCallback(() => {
+    const zone = adjustZoneRef.current
+    const container = containerRef.current
+    if (!zone || !container) {
+      setZoneBorderRect(null)
+      return
+    }
+
+    const zoneRect = zone.getBoundingClientRect()
+    const containerRect = container.getBoundingClientRect()
+    setZoneBorderRect({
+      left: zoneRect.left - containerRect.left - ADJUST_ZONE_PADDING_PX,
+      top: zoneRect.top - containerRect.top - ADJUST_ZONE_PADDING_PX,
+      width: zoneRect.width + ADJUST_ZONE_PADDING_PX * 2,
+      height: zoneRect.height + ADJUST_ZONE_PADDING_PX * 2,
+    })
+  }, [])
+
+  useLayoutEffect(() => {
+    updateZoneBorder()
+    const zone = adjustZoneRef.current
+    if (!zone) return undefined
+
+    const observer = new ResizeObserver(updateZoneBorder)
+    observer.observe(zone)
+    window.addEventListener('resize', updateZoneBorder)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', updateZoneBorder)
+    }
+  }, [pageIdx, fontSize, updateZoneBorder, page.type, settings])
+
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -282,20 +314,23 @@ export function SettingsPage() {
       const dist = Math.sqrt(dx * dx + dy * dy)
       const duration = Date.now() - startTime
       const W = el.clientWidth
-      const H = el.clientHeight
-      const inControlZone = isInControlZone(startX, startY, W, H)
+      const inAdjustZone = isInAdjustZone(
+        startX,
+        startY,
+        adjustZoneRef.current?.getBoundingClientRect(),
+      )
 
       if (isHorizontalSwipe(dx, dy, duration)) {
-        if (dx < 0) goNext()
-        else goPrev()
-      } else if (absDy > 90 && absDy > absDx * 2) {
+        if (horizontalSwipeDirection(dx) === 'left') goPrev()
+        else goNext()
+      } else if (absDy > 60 && absDy > absDx * 1.5) {
         if (dy < 0) {
-          if (inControlZone && page.type !== 'panel') {
+          if (inAdjustZone && page.type !== 'panel') {
             increaseValue()
           }
-        } else if (inControlZone && page.type !== 'panel') {
+        } else if (inAdjustZone && page.type !== 'panel') {
           decreaseValue()
-        } else {
+        } else if (dy > 0) {
           feedback.buttonPress()
           navigate('/')
         }
@@ -361,7 +396,7 @@ export function SettingsPage() {
           <p
             style={{
               color: colors.text,
-              fontSize: '0.85rem',
+              fontSize: scaleRem(0.85, fontSize),
               letterSpacing: '0.06em',
               textAlign: 'center',
             }}
@@ -374,19 +409,21 @@ export function SettingsPage() {
               feedback.buttonPress()
               void handleTestSpeech()
             }}
-            className="w-full rounded-2xl py-4 active:opacity-80"
+            className="w-full rounded-2xl active:opacity-80"
             style={{
               backgroundColor: colors.accent,
               color: colors.background,
               fontWeight: 900,
               letterSpacing: '0.06em',
+              fontSize: scaleRem(1, fontSize),
+              padding: `${scaleSize(1, fontSize)} 0`,
             }}
             aria-label="Test speech output"
           >
             TEST SPEECH
           </button>
           {speechTestError && (
-            <p style={{ color: colors.text, fontSize: '0.8rem', textAlign: 'center' }}>
+            <p style={{ color: colors.text, fontSize: scaleRem(0.8, fontSize), textAlign: 'center' }}>
               {speechTestError}
             </p>
           )}
@@ -412,7 +449,7 @@ export function SettingsPage() {
           <span
             style={{
               color: THEME_FG[themeKey],
-              fontSize: 'clamp(1rem, 4vw, 1.6rem)',
+              fontSize: scaleRem(1, fontSize),
               fontWeight: 900,
               letterSpacing: '0.04em',
               textAlign: 'center',
@@ -429,9 +466,7 @@ export function SettingsPage() {
       const val = settings[page.key]
       const pct = ((val - page.min) / (page.max - page.min)) * 100
       const previewFontSize =
-        page.key === 'fontSize'
-          ? scaleRem(2.5, val)
-          : 'clamp(2.5rem, 10vw, 4.5rem)'
+        page.key === 'fontSize' ? scaleRem(2.5, val) : scaleRem(2.5, fontSize)
       return (
         <div
           className="flex flex-col items-center gap-4"
@@ -485,7 +520,7 @@ export function SettingsPage() {
           </div>
           <span
             style={{
-              fontSize: 'clamp(2rem, 10vw, 4rem)',
+              fontSize: scaleRem(2, fontSize),
               fontWeight: 900,
               color: on ? colors.accent : colors.text,
             }}
@@ -509,15 +544,30 @@ export function SettingsPage() {
         touchAction: 'none',
         userSelect: 'none',
       }}
-      aria-label={`Settings, page ${pageIdx + 1} of ${totalPages}: ${page.label}. Tap left or right for previous or next setting. Swipe left or right to change setting page. Swipe up or down in the centre box to adjust value. Swipe down elsewhere for Home.`}
+      aria-label={`Settings, page ${pageIdx + 1} of ${totalPages}: ${page.label}. Tap left or right for previous or next setting. Swipe left or right to change setting page. Swipe up or down on the setting panel to adjust value. Swipe down outside the panel for Home.`}
     >
+      {zoneBorderRect && (
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            left: zoneBorderRect.left,
+            top: zoneBorderRect.top,
+            width: zoneBorderRect.width,
+            height: zoneBorderRect.height,
+            border: `2px dashed ${colors.border}`,
+            borderRadius: '1rem',
+            opacity: 0.45,
+          }}
+        />
+      )}
+
       <div
         className="absolute left-0 top-0 bottom-0 flex items-center justify-center"
         style={{ width: '35%' }}
       >
         <span
           style={{
-            fontSize: 'clamp(2.5rem, 10vw, 5rem)',
+            fontSize: scaleRem(2.5, fontSize),
             color: colors.text,
             fontWeight: 100,
           }}
@@ -532,7 +582,7 @@ export function SettingsPage() {
       >
         <span
           style={{
-            fontSize: 'clamp(2.5rem, 10vw, 5rem)',
+            fontSize: scaleRem(2.5, fontSize),
             color: colors.text,
             fontWeight: 100,
           }}
@@ -541,47 +591,49 @@ export function SettingsPage() {
         </span>
       </div>
 
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 pointer-events-none">
-        <span
-          style={{
-            fontSize: scaleRem(1, fontSize),
-            color: colors.text,
-            letterSpacing: '0.18em',
-            fontWeight: 700,
-          }}
-        >
-          {page.label}
-        </span>
-
-        {renderValue()}
-
-        {page.type !== 'toggle' && page.type !== 'panel' && (
-          <div className="flex flex-col items-center gap-1">
-            <div className="flex flex-col items-center gap-0">
-              <span style={{ color: colors.text, fontSize: '1.2rem', lineHeight: 1 }}>↑</span>
-              <span style={{ color: colors.text, fontSize: scaleRem(0.85, fontSize), letterSpacing: '0.1em' }}>
-                INCREASE
-              </span>
-            </div>
-            <div className="flex flex-col items-center gap-0">
-              <span style={{ color: colors.text, fontSize: '1.2rem', lineHeight: 1 }}>↓</span>
-              <span style={{ color: colors.text, fontSize: scaleRem(0.85, fontSize), letterSpacing: '0.1em' }}>
-                DECREASE
-              </span>
-            </div>
-          </div>
-        )}
-        {page.type === 'toggle' && (
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <div ref={adjustZoneRef} className="flex flex-col items-center gap-6">
           <span
             style={{
+              fontSize: scaleRem(1, fontSize),
               color: colors.text,
-              fontSize: scaleRem(0.85, fontSize),
-              letterSpacing: '0.1em',
+              letterSpacing: '0.18em',
+              fontWeight: 700,
             }}
           >
-            TAP CENTRE TO TOGGLE
+            {page.label}
           </span>
-        )}
+
+          {renderValue()}
+
+          {page.type !== 'toggle' && page.type !== 'panel' && (
+            <div className="flex flex-col items-center gap-1">
+              <div className="flex flex-col items-center gap-0">
+                <span style={{ color: colors.text, fontSize: scaleRem(1.2, fontSize), lineHeight: 1 }}>↑</span>
+                <span style={{ color: colors.text, fontSize: scaleRem(0.85, fontSize), letterSpacing: '0.1em' }}>
+                  INCREASE
+                </span>
+              </div>
+              <div className="flex flex-col items-center gap-0">
+                <span style={{ color: colors.text, fontSize: scaleRem(1.2, fontSize), lineHeight: 1 }}>↓</span>
+                <span style={{ color: colors.text, fontSize: scaleRem(0.85, fontSize), letterSpacing: '0.1em' }}>
+                  DECREASE
+                </span>
+              </div>
+            </div>
+          )}
+          {page.type === 'toggle' && (
+            <span
+              style={{
+                color: colors.text,
+                fontSize: scaleRem(0.85, fontSize),
+                letterSpacing: '0.1em',
+              }}
+            >
+              TAP CENTRE TO TOGGLE
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="absolute bottom-4 left-4 pointer-events-none">
