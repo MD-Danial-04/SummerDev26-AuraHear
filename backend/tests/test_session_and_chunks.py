@@ -49,6 +49,39 @@ class SessionAndChunkTests(unittest.TestCase):
         self.assertFalse(second.should_speak)
         self.assertEqual(second.suppressed_reason, "Repeated alert suppressed during cooldown.")
 
+    def test_wording_variant_same_hazard_is_suppressed_during_cooldown(self):
+        store = SessionStore()
+        session = store.start_session(context=None, alert_cooldown_seconds=60)
+        first_analysis = AnalyzeResponse(
+            source_type="image",
+            alert=HazardAlert(
+                danger_level="high",
+                confidence=0.9,
+                summary="Pole ahead.",
+                spoken_alert="Pole ahead. Stop.",
+                recommended_action="Stop walking.",
+                hazards=["pole"],
+            ),
+        )
+        second_analysis = AnalyzeResponse(
+            source_type="image",
+            alert=HazardAlert(
+                danger_level="high",
+                confidence=0.9,
+                summary="Pole blocking path.",
+                spoken_alert="Pole directly ahead. Stop now.",
+                recommended_action="Stop walking.",
+                hazards=["pole"],
+            ),
+        )
+
+        first = store.add_alert(session.session_id, first_analysis)
+        second = store.add_alert(session.session_id, second_analysis)
+
+        self.assertTrue(first.should_speak)
+        self.assertFalse(second.should_speak)
+        self.assertEqual(second.suppressed_reason, "Repeated alert suppressed during cooldown.")
+
     def test_ensure_session_creates_missing_session_for_serverless(self):
         store = SessionStore()
         session_id = "78df8e06-374f-4c6f-bb75-5649b7f18650"

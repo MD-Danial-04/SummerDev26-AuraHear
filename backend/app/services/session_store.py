@@ -178,13 +178,7 @@ class SessionStore:
 
 def _alert_signature(analysis: AnalyzeResponse) -> str:
     hazards = ",".join(sorted(hazard.lower() for hazard in analysis.alert.hazards))
-    return "|".join(
-        [
-            analysis.alert.danger_level,
-            analysis.alert.spoken_alert.strip().lower(),
-            hazards,
-        ]
-    )
+    return "|".join([analysis.alert.danger_level, hazards])
 
 
 def _format_time(value: datetime) -> str:
