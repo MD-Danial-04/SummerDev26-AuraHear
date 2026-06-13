@@ -14,7 +14,7 @@ const THEME_COLORS = {
     surfaceHover: '#2a2a2a',
     accent: '#FFFFFF',
     accentHover: '#E0E0E0',
-    muted: '#999999',
+    muted: '#BBBBBB',
   },
   'black-on-white': {
     background: '#FFFFFF',
@@ -24,7 +24,7 @@ const THEME_COLORS = {
     surfaceHover: '#E5E5E5',
     accent: '#000000',
     accentHover: '#333333',
-    muted: '#666666',
+    muted: '#555555',
   },
   'yellow-on-black': {
     background: '#000000',
@@ -34,7 +34,7 @@ const THEME_COLORS = {
     surfaceHover: '#2a2a00',
     accent: '#FFFF00',
     accentHover: '#E0E000',
-    muted: '#999900',
+    muted: '#CCCC00',
   },
   'green-on-black': {
     background: '#000000',
@@ -44,7 +44,7 @@ const THEME_COLORS = {
     surfaceHover: '#002a00',
     accent: '#00FF00',
     accentHover: '#00E000',
-    muted: '#009900',
+    muted: '#33DD33',
   },
 }
 

@@ -1,272 +1,280 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Map, MapPin, Settings, Volume2, VolumeX } from 'lucide-react'
 
-import { CameraView } from '../components/CameraView.jsx'
 import { useApp } from '../context/AppContext.js'
+import { useAnnounce } from '../hooks/useAnnounce.js'
+import { scaleRem } from '../utils/scaleFont.js'
+import { withAlpha } from '../utils/withAlpha.js'
+
+const prefersReducedMotion =
+  typeof window !== 'undefined' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 export function WalkingPage() {
   const navigate = useNavigate()
   const {
     videoRef,
+    active,
+    cameraPreview,
+    toggleCapture,
     cameraError,
     reattachCamera,
-    active,
-    toggleCapture,
-    volume,
-    setVolume,
-    fontSize,
-    layoutInverted,
+    hazardMapEnabled,
     colors,
     feedback,
-    setSettingsOpen,
+    fontSize,
   } = useApp()
+  const announce = useAnnounce()
 
-  const cameraZone = (
-    <CameraView
-      videoRef={videoRef}
-      active={active}
-      colors={colors}
-      cameraError={cameraError}
-      fontSize={fontSize}
-      showControls
-      onToggle={() => void toggleCapture()}
-      reattachCamera={reattachCamera}
-    />
-  )
+  const [swipeHint, setSwipeHint] = useState(null)
+  const containerRef = useRef(null)
+  const hintTimer = useRef(null)
 
-  const volumeBar = (
+  useEffect(() => {
+    const t = setTimeout(() => announce('Camera'), 300)
+    return () => clearTimeout(t)
+  }, [announce])
+
+  useEffect(() => {
+    reattachCamera()
+  }, [reattachCamera, active, cameraPreview])
+
+  const showHint = useCallback((msg) => {
+    if (hintTimer.current) clearTimeout(hintTimer.current)
+    setSwipeHint(msg)
+    hintTimer.current = setTimeout(() => setSwipeHint(null), 1200)
+  }, [])
+
+  const handleToggle = useCallback(() => {
+    void toggleCapture()
+  }, [toggleCapture])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    let startX = 0
+    let startY = 0
+    let startTime = 0
+    let pointerId = null
+
+    const onPointerDown = (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return
+      pointerId = e.pointerId
+      startX = e.clientX
+      startY = e.clientY
+      startTime = Date.now()
+    }
+
+    const onPointerUp = (e) => {
+      if (pointerId !== null && e.pointerId !== pointerId) return
+      pointerId = null
+
+      const dx = e.clientX - startX
+      const dy = e.clientY - startY
+      const absDx = Math.abs(dx)
+      const absDy = Math.abs(dy)
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const duration = Date.now() - startTime
+
+      if (absDy > 60 && absDy > absDx * 1.5 && dy < 0) {
+        feedback.buttonPress()
+        showHint('Help')
+        announce(
+          'Swipe left for settings, swipe right for navigation, and swipe up for help' +
+            (hazardMapEnabled ? ', swipe down for hazard map' : '') +
+            '. In settings, swipe left or right to change setting, swipe down for home. On navigation, swipe down for home.',
+        )
+      } else if (
+        absDy > 60 &&
+        absDy > absDx * 1.5 &&
+        dy > 0 &&
+        hazardMapEnabled
+      ) {
+        feedback.buttonPress()
+        showHint('Hazard Map ↓')
+        setTimeout(() => navigate('/authority'), 200)
+      } else if (absDx > 60 && absDx > absDy) {
+        if (dx < 0) {
+          feedback.buttonPress()
+          showHint('← Settings')
+          setTimeout(() => navigate('/settings'), 200)
+        } else {
+          feedback.buttonPress()
+          showHint('Navigation →')
+          setTimeout(() => navigate('/navigation'), 200)
+        }
+      } else if (dist < 22 && duration < 350) {
+        handleToggle()
+      }
+    }
+
+    const onPointerCancel = () => {
+      pointerId = null
+    }
+
+    el.addEventListener('pointerdown', onPointerDown)
+    el.addEventListener('pointerup', onPointerUp)
+    el.addEventListener('pointercancel', onPointerCancel)
+    return () => {
+      el.removeEventListener('pointerdown', onPointerDown)
+      el.removeEventListener('pointerup', onPointerUp)
+      el.removeEventListener('pointercancel', onPointerCancel)
+    }
+  }, [navigate, handleToggle, feedback, showHint, announce, hazardMapEnabled])
+
+  return (
     <div
-      className="flex flex-col items-center justify-center gap-3 px-6"
-      style={{
-        height: '20vh',
-        borderTop: `2px solid ${colors.border}`,
-        borderBottom: `2px solid ${colors.border}`,
-        backgroundColor: colors.surface,
-      }}
+      ref={containerRef}
+      className="size-full relative overflow-hidden"
+      style={{ backgroundColor: colors.background, touchAction: 'none', userSelect: 'none' }}
+      aria-label="Camera view. Tap to toggle analysis. Swipe left for settings. Swipe right for navigation."
     >
-      <div className="flex items-center justify-between w-full">
-        <VolumeX
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="absolute inset-0 size-full object-cover"
+      />
+
+      {!active && !cameraPreview && (
+        <div className="absolute inset-0" style={{ backgroundColor: withAlpha(colors.background, 0.55) }} />
+      )}
+
+      {active && (
+        <div
+          className="absolute top-5 left-5 flex items-center gap-2 px-3 py-1.5 rounded-full"
           style={{
-            width: '6vw',
-            height: '6vw',
-            maxWidth: 32,
-            maxHeight: 32,
-            color: colors.muted,
-            flexShrink: 0,
+            backgroundColor: withAlpha(colors.background, 0.7),
+            border: `2px solid ${colors.accent}`,
           }}
-        />
+        >
+          <span
+            className={`w-2 h-2 rounded-full inline-block ${prefersReducedMotion ? '' : 'animate-pulse'}`}
+            style={{ backgroundColor: colors.accent }}
+          />
+          <span
+            className="text-xs font-bold tracking-widest"
+            style={{ color: colors.accent }}
+          >
+            LIVE
+          </span>
+        </div>
+      )}
+
+      {cameraError && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <p
+            className="text-center px-8 whitespace-pre-line"
+            style={{ color: colors.text, fontSize: '1.1rem' }}
+          >
+            {cameraError}
+          </p>
+        </div>
+      )}
+
+      {!active && !cameraPreview && !cameraError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none">
+          <span
+            style={{
+              fontSize: 'clamp(2rem, 8vw, 3.5rem)',
+              fontWeight: 900,
+              color: colors.text,
+              letterSpacing: '0.08em',
+            }}
+          >
+            TAP TO START
+          </span>
+          <span style={{ fontSize: 'clamp(0.85rem, 3vw, 1.1rem)', color: colors.text }}>
+            Spatial analysis paused
+          </span>
+        </div>
+      )}
+
+      {!active && cameraPreview && !cameraError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none">
+          <span style={{ fontSize: 'clamp(0.85rem, 3vw, 1.1rem)', color: colors.text }}>
+            Camera on — tap again when analysis is ready
+          </span>
+        </div>
+      )}
+
+      {swipeHint && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div
+            className="px-8 py-4 rounded-3xl"
+            style={{
+              backgroundColor: withAlpha(colors.background, 0.82),
+              border: `2px solid ${colors.accent}`,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 'clamp(1.2rem, 5vw, 2rem)',
+                fontWeight: 900,
+                color: colors.text,
+              }}
+            >
+              {swipeHint}
+            </span>
+          </div>
+        </div>
+      )}
+
+      <div
+        className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 pl-3 pointer-events-none"
+      >
+        <span style={{ color: colors.text, fontSize: '1.6rem' }}>‹</span>
         <span
           style={{
-            fontSize: `${fontSize * 1.1}rem`,
-            fontWeight: 700,
             color: colors.text,
-            letterSpacing: '0.04em',
-          }}
-        >
-          VOLUME — {Math.round(volume * 100)}%
-        </span>
-        <Volume2
-          style={{
-            width: '6vw',
-            height: '6vw',
-            maxWidth: 32,
-            maxHeight: 32,
-            color: colors.accent,
-            flexShrink: 0,
-          }}
-        />
-      </div>
-
-      <div className="relative w-full flex items-center" style={{ height: '48px' }}>
-        <div
-          className="absolute inset-y-0 left-0 rounded-full pointer-events-none"
-          style={{
-            width: `${volume * 100}%`,
-            backgroundColor: colors.accent,
-            top: '50%',
-            height: '12px',
-            transform: 'translateY(-50%)',
-          }}
-        />
-        <div
-          className="absolute inset-y-0 rounded-full pointer-events-none"
-          style={{
-            inset: 0,
-            top: '50%',
-            height: '12px',
-            transform: 'translateY(-50%)',
-            backgroundColor: colors.background,
-            zIndex: 0,
-          }}
-        />
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={5}
-          value={Math.round(volume * 100)}
-          onChange={(e) => {
-            setVolume(parseInt(e.target.value, 10) / 100)
-            feedback.sliderChange()
-          }}
-          className="relative w-full"
-          style={{
-            height: '48px',
-            appearance: 'none',
-            WebkitAppearance: 'none',
-            background: 'transparent',
-            cursor: 'pointer',
-            zIndex: 1,
-          }}
-          aria-label={`Volume, currently ${Math.round(volume * 100)} percent`}
-        />
-      </div>
-
-      <style>{`
-        input[type=range]::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          background: ${colors.accent};
-          border: 4px solid ${colors.background};
-          box-shadow: 0 0 0 2px ${colors.accent};
-          cursor: pointer;
-        }
-        input[type=range]::-moz-range-thumb {
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          background: ${colors.accent};
-          border: 4px solid ${colors.background};
-          box-shadow: 0 0 0 2px ${colors.accent};
-          cursor: pointer;
-        }
-        input[type=range]::-webkit-slider-runnable-track {
-          height: 12px;
-          border-radius: 6px;
-          background: transparent;
-        }
-        input[type=range]::-moz-range-track {
-          height: 12px;
-          border-radius: 6px;
-          background: transparent;
-        }
-      `}</style>
-    </div>
-  )
-
-  const bottomRow = (
-    <div className="flex" style={{ borderTop: `2px solid ${colors.border}` }}>
-      <button
-        type="button"
-        onClick={() => {
-          feedback.buttonPress()
-          navigate('/navigation')
-        }}
-        className="flex-1 flex flex-col items-center justify-center gap-3 active:opacity-80 transition-opacity"
-        style={{
-          backgroundColor: colors.surface,
-          color: colors.text,
-          borderRight: `2px solid ${colors.border}`,
-          minHeight: '14vh',
-        }}
-        aria-label="Open navigation with voice commands"
-      >
-        <MapPin
-          style={{
-            width: '12vw',
-            height: '12vw',
-            maxWidth: 68,
-            maxHeight: 68,
-            color: colors.accent,
-          }}
-        />
-        <span
-          style={{
-            fontSize: `${fontSize * 1.3}rem`,
-            fontWeight: 800,
-            letterSpacing: '0.05em',
-          }}
-        >
-          NAVIGATE
-        </span>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => {
-          feedback.buttonPress()
-          navigate('/authority')
-        }}
-        className="flex-1 flex flex-col items-center justify-center gap-3 active:opacity-80 transition-opacity"
-        style={{
-          backgroundColor: colors.surface,
-          color: colors.text,
-          borderRight: `2px solid ${colors.border}`,
-          minHeight: '14vh',
-        }}
-        aria-label="View hazard map"
-      >
-        <Map
-          style={{
-            width: '12vw',
-            height: '12vw',
-            maxWidth: 68,
-            maxHeight: 68,
-            color: colors.accent,
-          }}
-        />
-        <span
-          style={{
-            fontSize: `${fontSize * 1.3}rem`,
-            fontWeight: 800,
-            letterSpacing: '0.05em',
-          }}
-        >
-          HAZARD MAP
-        </span>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => {
-          feedback.buttonPress()
-          setSettingsOpen(true)
-        }}
-        className="flex-1 flex flex-col items-center justify-center gap-3 active:opacity-80 transition-opacity"
-        style={{ backgroundColor: colors.surface, color: colors.text, minHeight: '14vh' }}
-        aria-label="Open settings"
-      >
-        <Settings style={{ width: '12vw', height: '12vw', maxWidth: 68, maxHeight: 68 }} />
-        <span
-          style={{
-            fontSize: `${fontSize * 1.3}rem`,
-            fontWeight: 800,
-            letterSpacing: '0.05em',
+            fontSize: scaleRem(0.85, fontSize),
+            letterSpacing: '0.08em',
+            writingMode: 'vertical-rl',
+            transform: 'rotate(180deg)',
           }}
         >
           SETTINGS
         </span>
-      </button>
-    </div>
-  )
+      </div>
+      <div
+        className="absolute right-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 pr-3 pointer-events-none"
+      >
+        <span style={{ color: colors.text, fontSize: '1.6rem' }}>›</span>
+        <span
+          style={{
+            color: colors.text,
+            fontSize: scaleRem(0.85, fontSize),
+            letterSpacing: '0.08em',
+            writingMode: 'vertical-rl',
+          }}
+        >
+          NAVIGATE
+        </span>
+      </div>
 
-  return (
-    <div className="size-full flex flex-col overflow-hidden">
-      {layoutInverted ? (
-        <>
-          {bottomRow}
-          {volumeBar}
-          {cameraZone}
-        </>
-      ) : (
-        <>
-          {cameraZone}
-          {volumeBar}
-          {bottomRow}
-        </>
-      )}
+      <div
+        className="absolute bottom-0 inset-x-0 flex justify-between items-center px-5 py-3 pointer-events-none"
+        style={{ backgroundColor: withAlpha(colors.background, 0.6) }}
+      >
+        <span style={{ color: colors.text, fontSize: scaleRem(0.9, fontSize), letterSpacing: '0.06em' }}>
+          ⟵ SETTINGS
+        </span>
+        <div className="flex flex-col items-center gap-0.5">
+          <span style={{ color: colors.text, fontSize: scaleRem(0.9, fontSize), letterSpacing: '0.06em' }}>
+            ↑ HELP
+          </span>
+          {hazardMapEnabled && (
+            <span style={{ color: colors.text, fontSize: scaleRem(0.9, fontSize), letterSpacing: '0.06em' }}>
+              ↓ HAZARD MAP
+            </span>
+          )}
+        </div>
+        <span style={{ color: colors.text, fontSize: scaleRem(0.9, fontSize), letterSpacing: '0.06em' }}>
+          NAVIGATE ⟶
+        </span>
+      </div>
     </div>
   )
 }
