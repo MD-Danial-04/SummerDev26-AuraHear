@@ -124,6 +124,13 @@ export function useLiveLocation() {
 
   useEffect(() => stopTracking, [stopTracking])
 
+  const setDemoLocation = useCallback((coords) => {
+    setCoordinates(coords)
+    setUpdatedAt(new Date().toISOString())
+    setStatus('tracking')
+    setError(null)
+  }, [])
+
   return {
     status,
     error,
@@ -131,6 +138,7 @@ export function useLiveLocation() {
     updatedAt,
     requestLocation,
     stopTracking,
+    setDemoLocation,
     isTracking: status === 'tracking',
   }
 }

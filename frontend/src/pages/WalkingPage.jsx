@@ -2,8 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { useApp } from '../context/AppContext.js'
+import { NavOverlay } from '../components/navigation/NavOverlay.jsx'
+import { WalkingPageHints } from '../components/WalkingPageHints.jsx'
 import { useAnnounce } from '../hooks/useAnnounce.js'
 import { scaleRem } from '../utils/scaleFont.js'
+import { isHorizontalSwipe, horizontalSwipeDirection } from '../utils/swipeGesture.js'
 import { withAlpha } from '../utils/withAlpha.js'
 
 const prefersReducedMotion =
@@ -77,11 +80,21 @@ export function WalkingPage() {
       const dist = Math.sqrt(dx * dx + dy * dy)
       const duration = Date.now() - startTime
 
-      if (absDy > 60 && absDy > absDx * 1.5 && dy < 0) {
+      if (isHorizontalSwipe(dx, dy, duration)) {
+        if (horizontalSwipeDirection(dx) === 'left') {
+          feedback.buttonPress()
+          showHint('← Navigation')
+          setTimeout(() => navigate('/navigation'), 200)
+        } else {
+          feedback.buttonPress()
+          showHint('Settings →')
+          setTimeout(() => navigate('/settings'), 200)
+        }
+      } else if (absDy > 60 && absDy > absDx * 1.5 && dy < 0) {
         feedback.buttonPress()
         showHint('Help')
         announce(
-          'Swipe left for settings, swipe right for navigation, and swipe up for help' +
+          'Swipe left for navigation, swipe right for settings, and swipe up for help' +
             (hazardMapEnabled ? ', swipe down for hazard map' : '') +
             '. In settings, swipe left or right to change setting, swipe down for home. On navigation, swipe down for home.',
         )
@@ -94,16 +107,6 @@ export function WalkingPage() {
         feedback.buttonPress()
         showHint('Hazard Map ↓')
         setTimeout(() => navigate('/authority'), 200)
-      } else if (absDx > 60 && absDx > absDy) {
-        if (dx < 0) {
-          feedback.buttonPress()
-          showHint('← Settings')
-          setTimeout(() => navigate('/settings'), 200)
-        } else {
-          feedback.buttonPress()
-          showHint('Navigation →')
-          setTimeout(() => navigate('/navigation'), 200)
-        }
       } else if (dist < 22 && duration < 350) {
         handleToggle()
       }
@@ -128,7 +131,7 @@ export function WalkingPage() {
       ref={containerRef}
       className="size-full relative overflow-hidden"
       style={{ backgroundColor: colors.background, touchAction: 'none', userSelect: 'none' }}
-      aria-label="Camera view. Tap to toggle analysis. Swipe left for settings. Swipe right for navigation."
+      aria-label="Camera view. Tap to toggle analysis. Swipe left for navigation. Swipe right for settings."
     >
       <video
         ref={videoRef}
@@ -222,59 +225,13 @@ export function WalkingPage() {
         </div>
       )}
 
-      <div
-        className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 pl-3 pointer-events-none"
-      >
-        <span style={{ color: colors.text, fontSize: '1.6rem' }}>‹</span>
-        <span
-          style={{
-            color: colors.text,
-            fontSize: scaleRem(0.85, fontSize),
-            letterSpacing: '0.08em',
-            writingMode: 'vertical-rl',
-            transform: 'rotate(180deg)',
-          }}
-        >
-          SETTINGS
-        </span>
-      </div>
-      <div
-        className="absolute right-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 pr-3 pointer-events-none"
-      >
-        <span style={{ color: colors.text, fontSize: '1.6rem' }}>›</span>
-        <span
-          style={{
-            color: colors.text,
-            fontSize: scaleRem(0.85, fontSize),
-            letterSpacing: '0.08em',
-            writingMode: 'vertical-rl',
-          }}
-        >
-          NAVIGATE
-        </span>
-      </div>
+      <WalkingPageHints
+        colors={colors}
+        fontSize={fontSize}
+        hazardMapEnabled={hazardMapEnabled}
+      />
 
-      <div
-        className="absolute bottom-0 inset-x-0 flex justify-between items-center px-5 py-3 pointer-events-none"
-        style={{ backgroundColor: withAlpha(colors.background, 0.6) }}
-      >
-        <span style={{ color: colors.text, fontSize: scaleRem(0.9, fontSize), letterSpacing: '0.06em' }}>
-          ⟵ SETTINGS
-        </span>
-        <div className="flex flex-col items-center gap-0.5">
-          <span style={{ color: colors.text, fontSize: scaleRem(0.9, fontSize), letterSpacing: '0.06em' }}>
-            ↑ HELP
-          </span>
-          {hazardMapEnabled && (
-            <span style={{ color: colors.text, fontSize: scaleRem(0.9, fontSize), letterSpacing: '0.06em' }}>
-              ↓ HAZARD MAP
-            </span>
-          )}
-        </div>
-        <span style={{ color: colors.text, fontSize: scaleRem(0.9, fontSize), letterSpacing: '0.06em' }}>
-          NAVIGATE ⟶
-        </span>
-      </div>
+      <NavOverlay />
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { DeveloperDetails } from '../components/DeveloperDetails.jsx'
 import { useApp } from '../context/AppContext.js'
 import { useAnnounce } from '../hooks/useAnnounce.js'
 import { scaleRem } from '../utils/scaleFont.js'
+import { isHorizontalSwipe } from '../utils/swipeGesture.js'
 
 /** @typedef {import('../hooks/useColorTheme.js').ColorTheme} ColorTheme */
 
@@ -266,7 +267,7 @@ export function SettingsPage() {
       const duration = Date.now() - startTime
       const W = el.clientWidth
 
-      if (absDx > 45 && absDx > absDy) {
+      if (isHorizontalSwipe(dx, dy, duration)) {
         if (dx < 0) goNext()
         else goPrev()
       } else if (absDy > 90 && absDy > absDx * 2) {

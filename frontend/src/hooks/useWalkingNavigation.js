@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { buildWalkingRoute, geocodeLocation } from '../api/navigationClient.js'
 import {
+  DEMO_DESTINATION_NAME,
+  DEMO_NAVIGATION_ROUTE,
+} from '../fixtures/demoNavigationRoute.js'
+import {
   distanceToPolylineMeters,
   findNearestStepIndex,
   haversineMeters,
@@ -369,6 +373,20 @@ export function useWalkingNavigation({
     speakStepAt(routeData, currentStepIndexRef.current, { force: true })
   }, [speakStepAt])
 
+  const startDemoRoute = useCallback(() => {
+    setError(null)
+    setCandidates([])
+    setSelectedIndex(0)
+    setDestinationQuery(DEMO_DESTINATION_NAME)
+    beginNavigation(DEMO_NAVIGATION_ROUTE)
+  }, [beginNavigation])
+
+  const showDemoArrived = useCallback(() => {
+    routeActiveRef.current = false
+    arrivedSpokenRef.current = true
+    setStatus('arrived')
+  }, [])
+
   useEffect(() => {
     if (status !== 'navigating' || !route || !liveLocation.coordinates) return
 
@@ -453,5 +471,7 @@ export function useWalkingNavigation({
     cancelRoute,
     repeatCurrentStep,
     handleHazardDuringNav,
+    startDemoRoute,
+    showDemoArrived,
   }
 }
