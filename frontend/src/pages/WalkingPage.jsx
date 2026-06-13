@@ -81,18 +81,18 @@ export function WalkingPage() {
       if (isHorizontalSwipe(dx, dy, duration)) {
         if (horizontalSwipeDirection(dx) === 'left') {
           feedback.buttonPress()
-          showHint('Settings ←')
-          setTimeout(() => navigate('/settings'), 200)
-        } else {
-          feedback.buttonPress()
           showHint('Navigation →')
           setTimeout(() => navigate('/navigation'), 200)
+        } else {
+          feedback.buttonPress()
+          showHint('Settings ←')
+          setTimeout(() => navigate('/settings'), 200)
         }
       } else if (isVerticalSwipe(dx, dy, duration) && dy < 0) {
         feedback.buttonPress()
         showHint('Help')
         announce(
-          'Swipe right for settings, swipe left for navigation, and swipe up for help' +
+          'Swipe left for settings, swipe right for navigation, and swipe up for help' +
             (hazardMapEnabled ? ', swipe down for hazard map' : '') +
             '. In settings, swipe left or right to change setting, swipe down for home. On navigation, swipe down for home.',
         )
@@ -124,7 +124,7 @@ export function WalkingPage() {
       ref={containerRef}
       className="size-full relative overflow-hidden"
       style={{ backgroundColor: colors.background, touchAction: 'none', userSelect: 'none' }}
-      aria-label="Camera view. Tap to toggle analysis. Swipe right for settings. Swipe left for navigation."
+      aria-label="Camera view. Tap to toggle analysis. Swipe left for settings. Swipe right for navigation."
     >
       <video
         ref={videoRef}
