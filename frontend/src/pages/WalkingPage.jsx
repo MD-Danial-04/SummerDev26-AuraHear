@@ -6,7 +6,7 @@ import { NavOverlay } from '../components/navigation/NavOverlay.jsx'
 import { WalkingPageHints } from '../components/WalkingPageHints.jsx'
 import { useAnnounce } from '../hooks/useAnnounce.js'
 import { scaleRem } from '../utils/scaleFont.js'
-import { isHorizontalSwipe, horizontalSwipeDirection } from '../utils/swipeGesture.js'
+import { horizontalSwipeDirection, isHorizontalSwipe, isVerticalSwipe } from '../utils/swipeGesture.js'
 import { withAlpha } from '../utils/withAlpha.js'
 
 const prefersReducedMotion =
@@ -75,8 +75,6 @@ export function WalkingPage() {
 
       const dx = e.clientX - startX
       const dy = e.clientY - startY
-      const absDx = Math.abs(dx)
-      const absDy = Math.abs(dy)
       const dist = Math.sqrt(dx * dx + dy * dy)
       const duration = Date.now() - startTime
 
@@ -90,7 +88,7 @@ export function WalkingPage() {
           showHint('Navigation →')
           setTimeout(() => navigate('/navigation'), 200)
         }
-      } else if (absDy > 60 && absDy > absDx * 1.5 && dy < 0) {
+      } else if (isVerticalSwipe(dx, dy, duration) && dy < 0) {
         feedback.buttonPress()
         showHint('Help')
         announce(
@@ -98,12 +96,7 @@ export function WalkingPage() {
             (hazardMapEnabled ? ', swipe down for hazard map' : '') +
             '. In settings, swipe left or right to change setting, swipe down for home. On navigation, swipe down for home.',
         )
-      } else if (
-        absDy > 60 &&
-        absDy > absDx * 1.5 &&
-        dy > 0 &&
-        hazardMapEnabled
-      ) {
+      } else if (isVerticalSwipe(dx, dy, duration) && dy > 0 && hazardMapEnabled) {
         feedback.buttonPress()
         showHint('Hazard Map ↓')
         setTimeout(() => navigate('/authority'), 200)
