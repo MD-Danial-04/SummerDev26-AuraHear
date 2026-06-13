@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Camera, CameraOff, Play, Square } from 'lucide-react'
 
 import { iconStyle, scaleRem, scaleSize } from '../utils/scaleFont.js'
+import { withAlpha } from '../utils/withAlpha.js'
 
 /** @typedef {import('../hooks/useColorTheme.js').ThemeColors} ThemeColors */
 
@@ -68,16 +69,16 @@ export function CameraView({
           <p style={{ fontSize: scaleRem(1.1, fontSize), fontWeight: 700, color: colors.text }}>
             Camera access error
           </p>
-          <p style={{ fontSize: scaleRem(0.9, fontSize), color: colors.muted }}>{cameraError}</p>
+          <p style={{ fontSize: scaleRem(0.9, fontSize), color: colors.text }}>{cameraError}</p>
         </div>
       ) : !active ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-          <Camera style={iconStyle(4, fontSize, { color: colors.muted })} />
-          <p style={{ fontSize: scaleRem(1.1, fontSize), color: colors.muted }}>
+          <Camera style={iconStyle(4, fontSize, { color: colors.text })} />
+          <p style={{ fontSize: scaleRem(1.1, fontSize), color: colors.text }}>
             Camera paused
           </p>
           {showControls && (
-            <p style={{ fontSize: scaleRem(0.9, fontSize), color: colors.muted }}>
+            <p style={{ fontSize: scaleRem(0.9, fontSize), color: colors.text }}>
               Press START to begin analysis
             </p>
           )}
@@ -90,7 +91,7 @@ export function CameraView({
           style={{
             top: scaleSize(0.75, fontSize),
             left: scaleSize(0.75, fontSize),
-            backgroundColor: 'rgba(0,0,0,0.75)',
+            backgroundColor: withAlpha(colors.background, 0.75),
             border: `1.5px solid ${colors.accent}`,
             zIndex: 2,
           }}
@@ -124,7 +125,7 @@ export function CameraView({
           style={{
             gap: scaleSize(0.75, fontSize),
             zIndex: 3,
-            backgroundColor: active ? 'transparent' : 'rgba(0,0,0,0.45)',
+            backgroundColor: active ? 'transparent' : withAlpha(colors.background, 0.45),
           }}
           aria-label={toggleLabel}
           aria-pressed={active}

@@ -1,38 +1,127 @@
-import { useMemo, useState } from 'react'
-import { Link } from 'react-router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
 
 import { HazardLegend } from '../components/map/HazardLegend.jsx'
 import { HazardMarkers } from '../components/map/HazardMarkers.jsx'
 import { HazardSidebar } from '../components/map/HazardSidebar.jsx'
 import { SingaporeMap } from '../components/map/SingaporeMap.jsx'
+import { useApp } from '../context/AppContext.js'
 import sampleHazards from '../data/sampleHazards.js'
+import { useAnnounce } from '../hooks/useAnnounce.js'
 import { parseHazardFeatures } from '../utils/hazardGeoJson.js'
 
 export function AuthorityMapPage() {
+  const navigate = useNavigate()
+  const { colors, fontSize, feedback } = useApp()
+  const announce = useAnnounce()
+  const containerRef = useRef(null)
+
   const hazards = useMemo(() => parseHazardFeatures(sampleHazards), [])
   const [selectedId, setSelectedId] = useState(null)
   const [flyToTarget, setFlyToTarget] = useState(null)
 
-  const handleSelectHazard = (hazard) => {
+  useEffect(() => {
+    const t = setTimeout(() => {
+      announce(`Hazard map. ${hazards.length} reported hazards.`)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [announce, hazards.length])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    let startX = 0
+    let startY = 0
+
+    const onTouchStart = (e) => {
+      startX = e.touches[0].clientX
+      startY = e.touches[0].clientY
+    }
+
+    const onTouchEnd = (e) => {
+      const dx = e.changedTouches[0].clientX - startX
+      const dy = e.changedTouches[0].clientY - startY
+      const absDx = Math.abs(dx)
+      const absDy = Math.abs(dy)
+      if (absDx > 70 && absDx > absDy * 1.5 && dx < 0) {
+        feedback.buttonPress()
+        navigate('/')
+      }
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [navigate, feedback])
+
+  const handleSelectHazard = useCallback((hazard) => {
     setSelectedId(hazard.id)
     setFlyToTarget({ lat: hazard.lat, lng: hazard.lng })
-  }
+  }, [])
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col bg-gray-100">
-      <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3 sm:px-6">
+    <div
+      ref={containerRef}
+      className="relative flex h-full min-h-0 flex-1 flex-col"
+      style={{
+        backgroundColor: colors.background,
+        color: colors.text,
+        touchAction: 'none',
+        userSelect: 'none',
+      }}
+    >
+      <div className="absolute top-4 left-4 z-10 pointer-events-none">
+        <span style={{ color: colors.text, fontSize: '0.75rem', letterSpacing: '0.06em' }}>
+          ← Home
+        </span>
+      </div>
+
+      <header
+        className="flex shrink-0 items-center justify-between px-4 py-3 sm:px-6"
+        style={{ borderBottom: `3px solid ${colors.border}` }}
+      >
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">AuraHear — Hazard Map</h1>
-          <p className="hidden text-sm text-gray-500 sm:block">
-            Singapore infrastructure hazard overview
+          <h1
+            style={{
+              fontSize: `${fontSize * 1.1}rem`,
+              fontWeight: 900,
+              letterSpacing: '0.06em',
+            }}
+          >
+            HAZARD MAP
+          </h1>
+          <p
+            className="hidden sm:block"
+            style={{
+              fontSize: `${fontSize * 0.85}rem`,
+              color: colors.text,
+              letterSpacing: '0.04em',
+            }}
+          >
+            Singapore infrastructure overview
           </p>
         </div>
-        <Link
-          to="/"
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+        <button
+          type="button"
+          onClick={() => {
+            feedback.buttonPress()
+            navigate('/')
+          }}
+          className="rounded-xl px-4 py-2 active:opacity-80"
+          style={{
+            border: `2px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+            fontWeight: 800,
+            fontSize: `${fontSize * 0.85}rem`,
+            letterSpacing: '0.05em',
+          }}
         >
-          Back to App
-        </Link>
+          ← Home
+        </button>
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -42,12 +131,20 @@ export function AuthorityMapPage() {
           </SingaporeMap>
         </main>
 
-        <aside className="order-2 flex min-h-0 max-h-[35svh] flex-col gap-4 overflow-y-auto border-t border-gray-200 bg-white p-4 lg:order-none lg:max-h-none lg:w-80 lg:shrink-0 lg:border-r lg:border-t-0">
-          <HazardLegend />
+        <aside
+          className="order-2 flex min-h-0 max-h-[35svh] flex-col gap-4 overflow-y-auto p-4 lg:order-none lg:max-h-none lg:w-80 lg:shrink-0 lg:border-l"
+          style={{
+            borderTop: `2px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+          }}
+        >
+          <HazardLegend colors={colors} fontSize={fontSize} />
           <HazardSidebar
             hazards={hazards}
             selectedId={selectedId}
             onSelect={handleSelectHazard}
+            colors={colors}
+            fontSize={fontSize}
           />
         </aside>
       </div>

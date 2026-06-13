@@ -66,7 +66,7 @@ export function DeveloperDetails({
     <details className="mt-2">
       <summary
         className="cursor-pointer font-semibold select-none"
-        style={{ color: colors.muted, fontSize: scaleRem(0.875, fontSize) }}
+        style={{ color: colors.text, fontSize: scaleRem(0.875, fontSize) }}
       >
         Developer details
       </summary>
@@ -244,7 +244,7 @@ function DetailRow({ label, value, colors, fontSize }) {
       className="grid gap-2"
       style={{ gridTemplateColumns: `${fontSize * 8}rem 1fr` }}
     >
-      <dt style={{ color: colors.muted }}>{label}</dt>
+      <dt style={{ color: colors.text }}>{label}</dt>
       <dd className="break-all" style={{ color: colors.text }}>
         {value}
       </dd>

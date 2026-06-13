@@ -29,12 +29,7 @@ export function NavRouteMap({
       : null
 
   return (
-    <div
-      style={{
-        borderTop: `2px solid ${colors.border}`,
-        backgroundColor: colors.surface,
-      }}
-    >
+    <div>
       <button
         type="button"
         onClick={() => setExpanded((open) => !open)}

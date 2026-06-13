@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
 
 import { startAnalysisSession } from '../api/sessionAnalysisClient.js'
 import { FeedbackToast } from '../components/FeedbackToast.jsx'
-import { SettingsDrawer } from '../components/SettingsDrawer.jsx'
 import { useCameraStream } from '../hooks/useCameraStream.js'
 import { useColorTheme } from '../hooks/useColorTheme.js'
 import { useInteractionFeedback } from '../hooks/useInteractionFeedback.js'
@@ -28,6 +28,10 @@ import {
   speakTest,
   speakWarningAsync,
 } from '../utils/speechAlert.js'
+import {
+  loadPersistedSettings,
+  savePersistedSettings,
+} from '../utils/persistedSettings.js'
 
 import { AppContext } from './AppContext.js'
 
@@ -71,16 +75,20 @@ function shouldAnnounce(result) {
  * @param {import('react').RefObject<HTMLVideoElement | null>} videoRef
  */
 function useAppState(videoRef) {
+  const navigate = useNavigate()
+  const persisted = loadPersistedSettings()
+
   const [active, setActive] = useState(false)
+  const [cameraPreview, setCameraPreview] = useState(false)
   const [sessionId, setSessionId] = useState(null)
   const [lastSpeechSource, setLastSpeechSource] = useState('idle')
   const [latestGuidance, setLatestGuidance] = useState(null)
-  const [volume, setVolume] = useState(0.8)
-  const [speechRate, setSpeechRate] = useState(1)
-  const [fontSize, setFontSize] = useState(1)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [voiceEnabled, setVoiceEnabled] = useState(false)
-  const [layoutInverted, setLayoutInverted] = useState(false)
+  const [volume, setVolume] = useState(persisted.volume)
+  const [speechRate, setSpeechRate] = useState(persisted.speechRate)
+  const [fontSize, setFontSize] = useState(persisted.fontSize)
+  const [voiceEnabled, setVoiceEnabled] = useState(persisted.voiceEnabled)
+  const [layoutInverted, setLayoutInverted] = useState(persisted.layoutInverted)
+  const [hazardMapEnabled, setHazardMapEnabled] = useState(persisted.hazardMapEnabled)
   const [toastMessage, setToastMessage] = useState(null)
   const [toastKey, setToastKey] = useState(0)
   const [speaking, setSpeaking] = useState(false)
@@ -92,7 +100,7 @@ function useAppState(videoRef) {
     error: null,
   })
 
-  const { theme, setTheme, colors } = useColorTheme('white-on-black')
+  const { theme, setTheme, colors } = useColorTheme(persisted.colorTheme)
   const feedback = useInteractionFeedback()
   const camera = useCameraStream(videoRef)
   const getCameraStream = useCallback(() => camera.getStream(), [camera])
@@ -106,6 +114,18 @@ function useAppState(videoRef) {
     setAudioVolume(volume)
     setSpeechSettings({ volume, rate: speechRate })
   }, [volume, speechRate])
+
+  useEffect(() => {
+    savePersistedSettings({
+      volume,
+      speechRate,
+      fontSize,
+      voiceEnabled,
+      layoutInverted,
+      hazardMapEnabled,
+      colorTheme: theme,
+    })
+  }, [volume, speechRate, fontSize, voiceEnabled, layoutInverted, hazardMapEnabled, theme])
 
   useEffect(() => {
     const updateSpeaking = (isSpeaking) => setSpeaking(isSpeaking)
@@ -128,9 +148,9 @@ function useAppState(videoRef) {
   }, [active, camera, videoRef])
 
   useEffect(() => {
-    if (!active) return
+    if (!active && !cameraPreview) return
     reattachCamera()
-  }, [active, reattachCamera])
+  }, [active, cameraPreview, reattachCamera])
 
   const showToast = useCallback((message) => {
     setToastMessage(message)
@@ -141,11 +161,19 @@ function useAppState(videoRef) {
     primeAudio()
     primeSpeech()
 
-    const stream = await camera.start()
+    let stream = camera.getStream()
+    const tracksLive =
+      stream?.getVideoTracks().some((track) => track.readyState === 'live') ?? false
+    if (!tracksLive) {
+      stream = await camera.start()
+    }
     if (!stream) {
       showToast(camera.error ?? 'Failed to access camera.')
       return false
     }
+
+    setCameraPreview(true)
+    reattachCamera()
 
     try {
       const session = await startAnalysisSession({
@@ -160,18 +188,18 @@ function useAppState(videoRef) {
       setActive(true)
       return true
     } catch (err) {
-      camera.stop()
       const message =
         err instanceof Error ? err.message : 'Failed to start live analysis.'
       showToast(message)
       return false
     }
-  }, [camera, chunkAnalysis, liveLocation, showToast])
+  }, [camera, chunkAnalysis, liveLocation, reattachCamera, showToast])
 
   const stopCapture = useCallback(() => {
     chunkAnalysis.stop()
     liveLocation.stopTracking()
     camera.stop()
+    setCameraPreview(false)
     stopCurrentAudio()
     cancelSpeech()
     setActive(false)
@@ -365,7 +393,7 @@ function useAppState(videoRef) {
     onVolumeUp: handleVolumeUp,
     onVolumeDown: handleVolumeDown,
     onRepeat: () => void handleRepeat(),
-    onSettings: () => setSettingsOpen(true),
+    onSettings: () => navigate('/settings'),
     onCommandRecognized: (cmd) => showToast(`Voice: ${cmd}`),
   })
 
@@ -409,6 +437,7 @@ function useAppState(videoRef) {
     cameraError,
     reattachCamera,
     active,
+    cameraPreview,
     toggleCapture,
     handleStart,
     handleStop,
@@ -420,12 +449,12 @@ function useAppState(videoRef) {
     setSpeechRate,
     fontSize,
     setFontSize,
-    settingsOpen,
-    setSettingsOpen,
     voiceEnabled,
     setVoiceEnabled,
     layoutInverted,
     setLayoutInverted,
+    hazardMapEnabled,
+    setHazardMapEnabled,
     theme,
     colors,
     handleThemeChange,
@@ -491,30 +520,7 @@ function useAppState(videoRef) {
 export function AppProvider({ children }) {
   const videoRef = useRef(null)
   const app = useAppState(videoRef)
-  const {
-    colors,
-    fontSize,
-    toastMessage,
-    toastKey,
-    settingsOpen,
-    setSettingsOpen,
-    speechRate,
-    setSpeechRate,
-    setFontSize,
-    theme,
-    handleThemeChange,
-    voiceEnabled,
-    setVoiceEnabled,
-    layoutInverted,
-    setLayoutInverted,
-    feedback,
-    speechTestError,
-    handleTestSpeech,
-    analysisStatus,
-    analysisError,
-    active,
-    developerDetails,
-  } = app
+  const { colors, fontSize, toastMessage, toastKey } = app
 
   return (
     <AppContext.Provider value={app}>
@@ -531,29 +537,6 @@ export function AppProvider({ children }) {
         )}
 
         {children}
-
-        <SettingsDrawer
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          speechRate={speechRate}
-          onSpeechRateChange={setSpeechRate}
-          fontSize={fontSize}
-          onFontSizeChange={setFontSize}
-          colorTheme={theme}
-          onColorThemeChange={handleThemeChange}
-          voiceEnabled={voiceEnabled}
-          onVoiceEnabledChange={setVoiceEnabled}
-          layoutInverted={layoutInverted}
-          onLayoutInvertedChange={setLayoutInverted}
-          onTestSpeech={() => void handleTestSpeech()}
-          speechTestError={speechTestError}
-          connectionStatus={analysisStatus}
-          streamError={analysisError}
-          active={active}
-          colors={colors}
-          feedback={feedback}
-          developerDetails={developerDetails}
-        />
       </div>
     </AppContext.Provider>
   )

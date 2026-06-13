@@ -28,11 +28,41 @@ export function useCameraStream(videoRef) {
       const video = videoRef.current
       if (video) {
         video.srcObject = stream
-        await video.play()
+        try {
+          await video.play()
+        } catch {
+          // Stream is valid; playback may resume after user gesture.
+        }
       }
 
       return stream
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'OverconstrainedError') {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          })
+          streamRef.current = stream
+          const video = videoRef.current
+          if (video) {
+            video.srcObject = stream
+            try {
+              await video.play()
+            } catch {
+              // Stream is valid; playback may resume after user gesture.
+            }
+          }
+          return stream
+        } catch (fallbackErr) {
+          const message =
+            fallbackErr instanceof Error
+              ? fallbackErr.message
+              : 'Failed to access camera.'
+          setError(message)
+          return null
+        }
+      }
       const message =
         err instanceof Error ? err.message : 'Failed to access camera.'
       setError(message)
