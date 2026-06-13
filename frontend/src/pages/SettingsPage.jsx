@@ -428,6 +428,10 @@ export function SettingsPage() {
     if (page.type === 'range') {
       const val = settings[page.key]
       const pct = ((val - page.min) / (page.max - page.min)) * 100
+      const previewFontSize =
+        page.key === 'fontSize'
+          ? scaleRem(2.5, val)
+          : 'clamp(2.5rem, 10vw, 4.5rem)'
       return (
         <div
           className="flex flex-col items-center gap-4"
@@ -435,7 +439,7 @@ export function SettingsPage() {
         >
           <span
             style={{
-              fontSize: 'clamp(2.5rem, 10vw, 4.5rem)',
+              fontSize: previewFontSize,
               fontWeight: 900,
               color: colors.accent,
               lineHeight: 1,
