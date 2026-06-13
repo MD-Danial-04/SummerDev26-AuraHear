@@ -87,18 +87,22 @@ export function DeveloperDetails({
           fontSize={fontSize}
         />
         <DetailRow label="Analysis mode" value={analysisMode} colors={colors} fontSize={fontSize} />
-        <DetailRow
-          label="Chunks recorded"
-          value={String(chunkCount)}
-          colors={colors}
-          fontSize={fontSize}
-        />
-        <DetailRow
-          label="Last chunk bytes"
-          value={lastChunkBytes > 0 ? String(lastChunkBytes) : '—'}
-          colors={colors}
-          fontSize={fontSize}
-        />
+        {captureMode === 'video_chunk' && (
+          <DetailRow
+            label="Chunks recorded"
+            value={String(chunkCount)}
+            colors={colors}
+            fontSize={fontSize}
+          />
+        )}
+        {captureMode === 'video_chunk' && (
+          <DetailRow
+            label="Last chunk bytes"
+            value={lastChunkBytes > 0 ? String(lastChunkBytes) : '—'}
+            colors={colors}
+            fontSize={fontSize}
+          />
+        )}
         <DetailRow
           label="Analyses completed"
           value={String(analysisCount)}
