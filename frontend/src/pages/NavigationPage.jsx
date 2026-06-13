@@ -5,6 +5,7 @@ import { Mic, MicOff } from 'lucide-react'
 import { useApp } from '../context/AppContext.js'
 import { useAnnounce } from '../hooks/useAnnounce.js'
 import { iconStyle, scaleRem, scaleSize } from '../utils/scaleFont.js'
+import { isVerticalSwipe } from '../utils/swipeGesture.js'
 import { withAlpha } from '../utils/withAlpha.js'
 
 const LOADING_STATUSES = new Set(['locating', 'geocoding', 'routing'])
@@ -158,6 +159,7 @@ export function NavigationPage() {
 
     let startX = 0
     let startY = 0
+    let startTime = 0
     let pointerId = null
 
     const onPointerDown = (e) => {
@@ -165,6 +167,7 @@ export function NavigationPage() {
       pointerId = e.pointerId
       startX = e.clientX
       startY = e.clientY
+      startTime = Date.now()
     }
 
     const onPointerUp = (e) => {
@@ -173,10 +176,9 @@ export function NavigationPage() {
 
       const dx = e.clientX - startX
       const dy = e.clientY - startY
-      const absDx = Math.abs(dx)
-      const absDy = Math.abs(dy)
+      const duration = Date.now() - startTime
 
-      if (absDy > 60 && absDy > absDx * 1.5 && dy > 0) {
+      if (isVerticalSwipe(dx, dy, duration) && dy > 0) {
         feedback.buttonPress()
         navigate('/')
       }

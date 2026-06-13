@@ -5,7 +5,7 @@ import { DeveloperDetails } from '../components/DeveloperDetails.jsx'
 import { useApp } from '../context/AppContext.js'
 import { useAnnounce } from '../hooks/useAnnounce.js'
 import { scaleRem, scaleSize } from '../utils/scaleFont.js'
-import { horizontalSwipeDirection, isHorizontalSwipe } from '../utils/swipeGesture.js'
+import { horizontalSwipeDirection, isHorizontalSwipe, isVerticalSwipe } from '../utils/swipeGesture.js'
 
 /** @typedef {import('../hooks/useColorTheme.js').ColorTheme} ColorTheme */
 
@@ -309,8 +309,6 @@ export function SettingsPage() {
 
       const dx = e.clientX - startX
       const dy = e.clientY - startY
-      const absDx = Math.abs(dx)
-      const absDy = Math.abs(dy)
       const dist = Math.sqrt(dx * dx + dy * dy)
       const duration = Date.now() - startTime
       const W = el.clientWidth
@@ -323,7 +321,7 @@ export function SettingsPage() {
       if (isHorizontalSwipe(dx, dy, duration)) {
         if (horizontalSwipeDirection(dx) === 'left') goPrev()
         else goNext()
-      } else if (absDy > 60 && absDy > absDx * 1.5) {
+      } else if (isVerticalSwipe(dx, dy, duration)) {
         if (dy < 0) {
           if (inAdjustZone && page.type !== 'panel') {
             increaseValue()
