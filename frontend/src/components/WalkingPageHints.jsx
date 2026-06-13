@@ -40,11 +40,14 @@ export function WalkingPageHints({ colors, fontSize, hazardMapEnabled }) {
       </div>
 
       <div
-        className="absolute bottom-0 inset-x-0 grid grid-cols-3 items-center px-5 py-3 pointer-events-none"
-        style={{ backgroundColor: withAlpha(colors.background, 0.6) }}
+        className="absolute bottom-0 inset-x-0 grid items-center px-4 py-3 pointer-events-none"
+        style={{
+          gridTemplateColumns: '1fr auto 1fr',
+          backgroundColor: withAlpha(colors.background, 0.6),
+        }}
       >
         <span
-          className="justify-self-start"
+          className="justify-self-start text-left whitespace-nowrap"
           style={{
             color: colors.text,
             fontSize: scaleRem(0.9, fontSize),
@@ -53,7 +56,7 @@ export function WalkingPageHints({ colors, fontSize, hazardMapEnabled }) {
         >
           SETTINGS ⟵
         </span>
-        <div className="justify-self-center flex flex-col items-center gap-0.5">
+        <div className="flex flex-col items-center gap-0.5 text-center whitespace-nowrap">
           <span
             style={{
               color: colors.text,
@@ -76,7 +79,7 @@ export function WalkingPageHints({ colors, fontSize, hazardMapEnabled }) {
           )}
         </div>
         <span
-          className="justify-self-end"
+          className="justify-self-end text-right whitespace-nowrap"
           style={{
             color: colors.text,
             fontSize: scaleRem(0.9, fontSize),
