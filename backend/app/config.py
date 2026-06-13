@@ -46,11 +46,11 @@ class Settings:
         self.max_chunk_bytes = _int_env("MAX_CHUNK_BYTES", 3 * 1024 * 1024)
         self.min_analysis_interval_seconds = _float_env(
             "MIN_ANALYSIS_INTERVAL_SECONDS",
-            0.9,
+            0.5,
         )
         self.max_session_analyses_per_minute = _int_env(
             "MAX_SESSION_ANALYSES_PER_MINUTE",
-            60,
+            120,
         )
 
 
