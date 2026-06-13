@@ -114,6 +114,36 @@ DIRECTION_KEYWORDS = {
     "center": ["ahead", "front", "center", "straight ahead"],
 }
 
+IMMEDIATE_PROXIMITY_PHRASES = {
+    "imminent",
+    "immediately",
+    "right ahead",
+    "directly ahead",
+    "very close",
+    "about to hit",
+    "within one step",
+    "within a step",
+    "one step away",
+    "at the user's feet",
+    "at user feet",
+    "close enough to touch",
+    "filling the path",
+    "blocking the path ahead",
+}
+
+NEAR_PROXIMITY_PHRASES = {
+    "within two steps",
+    "next two steps",
+    "next 1-2 steps",
+    "next 2 steps",
+    "close to the path",
+    "approaching the path",
+    "coming into the path",
+    "a few steps ahead",
+}
+
+DIRECT_PATH_DIRECTIONS = {"center", "center_left", "center_right", "unknown"}
+
 
 SYSTEM_PROMPT = """
 You are AuraHear, an assistive vision safety system for blind pedestrians.
@@ -126,6 +156,9 @@ walls, closed doors, poles, bollards, bins, chairs, tables, barriers, curbs,
 glass panels, and low obstacles. If the direct path appears blocked within the
 next 1-2 steps, return at least medium danger. If collision appears imminent,
 recommend stopping immediately.
+Object closeness matters more than object category. A common object like a wall,
+chair, or door should trigger a stronger warning than a distant bus if it is
+close enough to block the next step or cause an immediate collision.
 
 Return only valid JSON with this exact shape:
 {
@@ -612,9 +645,32 @@ def _apply_blocked_path_guardrails(alert: HazardAlert) -> HazardAlert:
     if not mentions_blocked_path:
         return HazardAlert.model_validate(updated_fields)
 
-    if alert.danger_level in {"none", "low"}:
-        updated_fields["danger_level"] = "medium"
-        updated_fields["confidence"] = max(alert.confidence, 0.6)
+    clear_side = _preferred_clear_side(alert.safe_path)
+    direct_path_risk = direction_hint in DIRECT_PATH_DIRECTIONS
+
+    minimum_danger = None
+    minimum_confidence = alert.confidence
+
+    if proximity_hint == "immediate":
+        if direct_path_risk or clear_side is None:
+            minimum_danger = "high"
+            minimum_confidence = max(alert.confidence, 0.78)
+        else:
+            minimum_danger = "medium"
+            minimum_confidence = max(alert.confidence, 0.68)
+    elif proximity_hint == "near":
+        minimum_danger = "medium"
+        minimum_confidence = max(alert.confidence, 0.65)
+    elif alert.danger_level in {"none", "low"}:
+        minimum_danger = "medium"
+        minimum_confidence = max(alert.confidence, 0.6)
+
+    if minimum_danger:
+        updated_fields["danger_level"] = _raise_to_minimum_danger(
+            alert.danger_level,
+            minimum_danger,
+        )
+        updated_fields["confidence"] = minimum_confidence
 
     if any(keyword in combined_text for keyword in STATIC_OBSTACLE_KEYWORDS):
         obstacle_label = _primary_obstacle_label(alert, combined_text)
@@ -667,18 +723,11 @@ def _resolve_proximity_hint(alert: HazardAlert, combined_text: str) -> str:
     if alert.danger_level == "none" and not alert.hazards:
         return "clear"
 
-    if any(
-        phrase in combined_text
-        for phrase in [
-            "imminent",
-            "immediately",
-            "right ahead",
-            "directly ahead",
-            "very close",
-            "about to hit",
-        ]
-    ):
+    if any(phrase in combined_text for phrase in IMMEDIATE_PROXIMITY_PHRASES):
         return "immediate"
+
+    if any(phrase in combined_text for phrase in NEAR_PROXIMITY_PHRASES):
+        return "near"
 
     if alert.danger_level in {"high", "critical"}:
         return "immediate"
@@ -713,6 +762,12 @@ def _primary_obstacle_label(alert: HazardAlert, combined_text: str) -> str:
             return keyword
 
     return "obstacle"
+
+
+def _raise_to_minimum_danger(current: str, minimum: str) -> str:
+    if DANGER_RANK.get(minimum, 0) > DANGER_RANK.get(current, 0):
+        return minimum
+    return current
 
 
 def _build_obstacle_spoken_alert(
@@ -1161,8 +1216,13 @@ def _normalize_proximity_hint(value: Any) -> str:
     normalized = str(value).strip().lower().replace("-", "_").replace(" ", "_")
     synonyms = {
         "very_close": "immediate",
+        "within_one_step": "immediate",
+        "one_step_away": "immediate",
+        "very_near": "immediate",
         "close": "near",
         "nearby": "near",
+        "within_two_steps": "near",
+        "two_steps_away": "near",
         "soon": "ahead",
         "safe": "clear",
     }

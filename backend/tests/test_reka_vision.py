@@ -73,8 +73,8 @@ class RekaVisionTests(unittest.TestCase):
             """
         )
 
-        self.assertEqual(alert.danger_level, "medium")
-        self.assertGreaterEqual(alert.confidence, 0.6)
+        self.assertEqual(alert.danger_level, "high")
+        self.assertGreaterEqual(alert.confidence, 0.78)
         self.assertEqual(alert.spoken_alert, "Wall ahead. Stop now.")
         self.assertEqual(
             alert.recommended_action,
@@ -133,6 +133,7 @@ class RekaVisionTests(unittest.TestCase):
             alert.recommended_action,
             "Veer left now and slow down until clear of the barrier.",
         )
+        self.assertEqual(alert.danger_level, "high")
 
     def test_parse_alert_uses_generic_obstacle_when_object_is_unspecified(self):
         alert = _parse_alert(
@@ -150,12 +151,38 @@ class RekaVisionTests(unittest.TestCase):
             """
         )
 
+        self.assertEqual(alert.danger_level, "high")
         self.assertEqual(alert.direction_hint, "center")
         self.assertEqual(alert.proximity_hint, "immediate")
         self.assertEqual(alert.spoken_alert, "Obstacle ahead. Stop now.")
         self.assertEqual(
             alert.recommended_action,
             "Stop before the obstacle and rescan for a clear side.",
+        )
+
+    def test_parse_alert_marks_two_step_blocked_path_as_near(self):
+        alert = _parse_alert(
+            """
+            {
+              "danger_level": "low",
+              "confidence": 0.4,
+              "summary": "A closed door is within two steps and blocks the direct path.",
+              "spoken_alert": "Door ahead.",
+              "recommended_action": "Continue carefully.",
+              "hazards": ["closed door"],
+              "safe_path": "Left side is clearer.",
+              "detected_objects": ["closed door"]
+            }
+            """
+        )
+
+        self.assertEqual(alert.danger_level, "medium")
+        self.assertGreaterEqual(alert.confidence, 0.65)
+        self.assertEqual(alert.proximity_hint, "near")
+        self.assertEqual(alert.spoken_alert, "Closed door ahead. Veer left.")
+        self.assertEqual(
+            alert.recommended_action,
+            "Veer slightly left and continue cautiously past the closed door.",
         )
 
     def test_parse_alert_rejects_invalid_danger_level(self):
